@@ -5,3 +5,4 @@ authors = ["Fredrik Østrem <fredrik.ostrem@cognite.com>"]
 edition = "2018"
 
 [dependencies]
+clap = "2.33.0"
