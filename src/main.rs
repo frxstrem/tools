@@ -6,8 +6,13 @@ use args::Args;
 mod message;
 use message::Message;
 
+mod printer;
+use printer::MessagePrinter;
+
 fn main() {
     let args = Args::parse();
+
+    let printer = printer::PlainPrinter;
 
     // read line by line from standard input
     let reader = BufReader::new(io::stdin());
@@ -16,6 +21,6 @@ fn main() {
         let message: Message =
             serde_json::from_str(&line).unwrap_or_else(|_| Message::from_raw(line));
 
-        println!("{:?}", message);
+        printer.print(&message);
     }
 }

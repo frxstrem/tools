@@ -1,17 +1,46 @@
-use serde::{Deserialize, Deserializer};
+use std::collections::HashMap;
+use std::fmt::{self, Display};
 
-#[derive(Clone, Debug, Deserialize)]
+use chrono::prelude::*;
+use serde::{de, Deserialize, Deserializer};
+
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct Message {
+    /// Text content of log message.
+    #[serde(rename = "message")]
     text: String,
+
+    /// Log message severity.
     severity: Severity,
+
+    /// Timestamp of log message (in local time).
+    #[serde(alias = "time", default, deserialize_with = "parse_datetime")]
+    timestamp: Option<DateTime<Local>>,
+
+    /// Originating location of message in source code.
+    #[serde(rename = "sourceLocation", alias = "src")]
+    source_location: Option<SourceLocation>,
+
+    /// Name of process that logged this message.
+    #[serde(rename = "processName")]
+    process_name: Option<String>,
+
+    /// Arbitrary context data
+    context: HashMap<String, String>,
 }
 
 impl Message {
     pub fn from_raw(text: impl AsRef<str>) -> Message {
         Message {
             text: text.as_ref().to_string(),
-            severity: Severity::Default,
+            ..Default::default()
         }
+    }
+}
+
+impl Display for Message {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{}", self.text)
     }
 }
 
@@ -39,13 +68,7 @@ impl<'de> Deserialize<'de> for Severity {
     where
         D: Deserializer<'de>,
     {
-        #[derive(Deserialize)]
-        enum StringOrNumber {
-            String(String),
-            Number(u64),
-        }
-
-        match StringOrNumber::deserialize(deserializer)? {
+        match StringOrNumber::<u64>::deserialize(deserializer)? {
             StringOrNumber::String(severity) => match severity.to_lowercase().as_ref() {
                 "emergency" => Ok(Severity::Emergency),
                 "alert" => Ok(Severity::Alert),
@@ -80,4 +103,57 @@ impl<'de> Deserialize<'de> for Severity {
             }
         }
     }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct SourceLocation {
+    file: Option<String>,
+
+    #[serde(default, deserialize_with = "parse_usize_opt")]
+    line: Option<usize>,
+
+    #[serde(default, deserialize_with = "parse_usize_opt")]
+    column: Option<usize>,
+
+    function: Option<String>,
+}
+
+fn parse_datetime<'de, D>(deserializer: D) -> Result<Option<DateTime<Local>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum TimestampVariants {
+        DateTime(DateTime<Local>),
+        SecondsNanos { seconds: i64, nanos: u32 },
+    }
+
+    match <Option<TimestampVariants> as Deserialize>::deserialize(deserializer)? {
+        Some(TimestampVariants::DateTime(datetime)) => Ok(Some(datetime)),
+        Some(TimestampVariants::SecondsNanos { seconds, nanos }) => {
+            Ok(Some(Local.timestamp(seconds, nanos)))
+        }
+        None => Ok(None),
+    }
+}
+
+fn parse_usize_opt<'de, D>(deserializer: D) -> Result<Option<usize>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    match <Option<StringOrNumber<_>> as Deserialize>::deserialize(deserializer)? {
+        Some(StringOrNumber::String(value)) => {
+            Ok(Some(value.parse().map_err(|err| de::Error::custom(err))?))
+        }
+        Some(StringOrNumber::Number(value)) => Ok(value),
+        None => Ok(None),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum StringOrNumber<N> {
+    String(String),
+    Number(N),
 }
