@@ -11,6 +11,7 @@ pub struct Message {
     text: String,
 
     /// Log message severity.
+    #[serde(default)]
     severity: Severity,
 
     /// Timestamp of log message (in local time).
@@ -26,6 +27,7 @@ pub struct Message {
     process_name: Option<String>,
 
     /// Arbitrary context data
+    #[serde(default)]
     context: HashMap<String, String>,
 }
 
@@ -35,6 +37,30 @@ impl Message {
             text: text.as_ref().to_string(),
             ..Default::default()
         }
+    }
+
+    pub fn severity(&self) -> Severity {
+        self.severity
+    }
+
+    pub fn timestamp(&self) -> Option<DateTime<Local>> {
+        self.timestamp
+    }
+
+    pub fn source_location(&self) -> Option<&SourceLocation> {
+        self.source_location.as_ref()
+    }
+
+    pub fn process_name(&self) -> Option<&str> {
+        self.process_name.as_ref().map(String::as_ref)
+    }
+
+    pub fn context(&self) -> &HashMap<String, String> {
+        &self.context
+    }
+
+    pub fn request_id(&self) -> Option<&str> {
+        self.context.get("requestId").map(String::as_ref)
     }
 }
 
@@ -60,6 +86,12 @@ pub enum Severity {
 impl Default for Severity {
     fn default() -> Severity {
         Severity::Default
+    }
+}
+
+impl Display for Severity {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{:?}", self)
     }
 }
 
@@ -118,6 +150,29 @@ pub struct SourceLocation {
     function: Option<String>,
 }
 
+impl SourceLocation {
+    pub fn to_string(&self) -> Option<String> {
+        match self {
+            SourceLocation {
+                file: Some(file),
+                line: Some(line),
+                column: Some(column),
+                ..
+            } => Some(format!("{}:{}:{}", file, line, column)),
+            SourceLocation {
+                file: Some(file),
+                line: Some(line),
+                ..
+            } => Some(format!("{}:{}", file, line)),
+            SourceLocation {
+                function: Some(function),
+                ..
+            } => Some(format!("#{}", function)),
+            _ => None,
+        }
+    }
+}
+
 fn parse_datetime<'de, D>(deserializer: D) -> Result<Option<DateTime<Local>>, D::Error>
 where
     D: Deserializer<'de>,
@@ -129,12 +184,12 @@ where
         SecondsNanos { seconds: i64, nanos: u32 },
     }
 
-    match <Option<TimestampVariants> as Deserialize>::deserialize(deserializer)? {
-        Some(TimestampVariants::DateTime(datetime)) => Ok(Some(datetime)),
-        Some(TimestampVariants::SecondsNanos { seconds, nanos }) => {
+    match <Option<TimestampVariants> as Deserialize>::deserialize(deserializer) {
+        Ok(Some(TimestampVariants::DateTime(datetime))) => Ok(Some(datetime)),
+        Ok(Some(TimestampVariants::SecondsNanos { seconds, nanos })) => {
             Ok(Some(Local.timestamp(seconds, nanos)))
         }
-        None => Ok(None),
+        _ => Ok(None),
     }
 }
 
