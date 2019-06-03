@@ -5,6 +5,7 @@ use clap::clap_app;
 #[derive(Clone, Debug)]
 pub struct Args {
     pub debug: bool,
+    pub compact: bool,
 
     pub show_context: bool,
     pub show_source: bool,
@@ -22,6 +23,8 @@ impl Args {
         clap_app!(("pretty-log") =>
             (@arg debug: -d --debug
                 "Enable debug output")
+            (@arg compact: -z --compact
+                "Enable compact formatting")
 
             (@arg request: -r --request
                 "Show request ID")
@@ -43,7 +46,7 @@ impl Args {
             )
 
             (@arg command: +last +multiple
-            "Run a command and pretty-print logs from it")
+                "Run a command and pretty-print logs from it")
         )
     }
 
@@ -75,6 +78,7 @@ impl Args {
 
         Args {
             debug: matches.is_present("debug"),
+            compact: matches.is_present("compact"),
 
             show_context: matches.is_present("context"),
             show_source: matches.is_present("source"),

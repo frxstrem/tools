@@ -42,40 +42,37 @@ impl<S: Styling> MessagePrinter for FancyPrinter<S> {
     fn print(&self, message: &Message) {
         let _lock = self.lock();
 
-        let mut lines: Vec<_> = message
+        let lines: Vec<_> = message
             .to_string()
             .split('\n')
             .map(str::to_string)
-            .map(|line| (line, true))
             .collect();
 
-        let mut append = |line| lines.push((line, false));
-
-        if self.args.show_request_id {
-            if let Some(request_id) = message.request_id() {
-                append(format!("request ID = {}", request_id));
-            }
-        }
+        let mut extras = Vec::new();
 
         if self.args.show_context {
             let context = message.context();
             if !context.is_empty() {
-                append(format!("ctx = {:?}", context));
+                extras.push(format!("{:?}", context));
+            }
+        } else if self.args.show_request_id {
+            if let Some(request_id) = message.request_id() {
+                extras.push(format!("[{}]", request_id));
             }
         }
 
         if self.args.show_source {
             if let Some(source_location) = message.source_location().and_then(|loc| loc.to_string())
             {
-                append(format!("({})", source_location));
+                extras.push(format!("({})", source_location));
             }
         }
 
         if self.args.debug {
-            append(format!("{:?}", message));
+            extras.push(format!("{:?}", message));
         }
 
-        for (lineno, (line, strong)) in lines.into_iter().enumerate() {
+        for (lineno, line) in lines.into_iter().enumerate() {
             let is_first = lineno == 0;
 
             // print prefix fields
@@ -96,16 +93,11 @@ impl<S: Styling> MessagePrinter for FancyPrinter<S> {
 
             if is_first {
                 print!("> ");
-            } else if strong {
-                print!("… ");
             } else {
-                print!("+ ");
+                print!("… ");
             }
 
-            if let Some(process_name) = message
-                .process_name()
-                .and_if(|| self.args.show_process)
-            {
+            if let Some(process_name) = message.process_name().and_if(|| self.args.show_process) {
                 if is_first {
                     print!("[{}] ", process_name);
                 } else {
@@ -113,16 +105,33 @@ impl<S: Styling> MessagePrinter for FancyPrinter<S> {
                 }
             }
 
-            if strong {
-                print!("{}", S::reset());
-                print!("{}", S::severity(message.severity()));
-                print!("{}", S::strong());
-            }
-
+            print!("{}", S::reset());
+            print!("{}", S::severity(message.severity()));
+            print!("{}", S::strong());
             print!("{}", line);
 
-            print!("{}", S::reset());
-            println!();
+            if is_first && self.args.compact {
+                print!("{}", S::reset());
+                print!("{}", S::severity(message.severity()));
+                print!("{}", S::weak());
+
+                for extra in extras.iter() {
+                    print!(" {}", extra);
+                }
+            }
+
+            println!("{}", S::reset());
+        }
+
+        if !self.args.compact {
+            for extra in extras.into_iter() {
+                print!("{}", S::severity(message.severity()));
+                print!("{}", S::weak());
+
+                print!("{:39}+ {}", "", extra);
+
+                println!("{}", S::reset());
+            }
         }
     }
 }
