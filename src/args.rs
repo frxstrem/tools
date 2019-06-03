@@ -12,23 +12,38 @@ pub struct Args {
     pub show_request_id: bool,
     pub show_process: bool,
 
+    pub command: Option<Vec<String>>,
+
     pub formatting: FormattingMode,
 }
 
 impl Args {
     fn app<'a, 'b>() -> clap::App<'a, 'b> {
         clap_app!(("pretty-log") =>
-            (@arg debug: -d --debug             "Enable debug output")
+            (@arg debug: -d --debug
+                "Enable debug output")
 
-            (@arg request: -r --request         "Show request ID")
-            (@arg process: -P --process         "Show process name")
+            (@arg request: -r --request
+                "Show request ID")
+            (@arg process: -P --process
+                "Show process name")
 
-            (@arg context: -x --context         "Show context data for logs")
-            (@arg source: -s --source           "Show source location for logs")
+            (@arg context: -x --context
+                "Show context data for logs")
+            (@arg source: -s --source
+                "Show source location for logs")
 
-            (@arg plain: -p --plain             "Only output text data")
-            (@arg color: -c --color             "Enable color")
-            (@arg nocolor: -C --("no-color")    "Disable color")
+            (@group formatting =>
+                (@arg plain: -p --plain
+                    "Only output text data")
+                (@arg color: -c --color
+                    "Output pretty-printed in color")
+                (@arg nocolor: -C --("no-color")
+                    "Output pretty-printed uncolored")
+            )
+
+            (@arg command: +last +multiple
+            "Run a command and pretty-print logs from it")
         )
     }
 
@@ -66,6 +81,10 @@ impl Args {
 
             show_request_id: matches.is_present("request"),
             show_process: matches.is_present("process"),
+
+            command: matches
+                .values_of("command")
+                .map(|cmd| cmd.map(str::to_string).collect()),
 
             formatting: {
                 if matches.is_present("plain") {

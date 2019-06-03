@@ -1,10 +1,11 @@
 use std::marker::PhantomData;
+use std::sync::{Mutex, MutexGuard};
 
 use crate::args::Args;
 use crate::ext::*;
 use crate::message::{Message, Severity};
 
-pub trait MessagePrinter {
+pub trait MessagePrinter: Send + Sync {
     fn print(&self, message: &Message);
 }
 
@@ -18,6 +19,7 @@ impl MessagePrinter for PlainPrinter {
 
 pub struct FancyPrinter<S: Styling> {
     args: Args,
+    lock: Mutex<()>,
     _styling: PhantomData<S>,
 }
 
@@ -26,13 +28,20 @@ impl<S: Styling> FancyPrinter<S> {
         let args = args.clone();
         FancyPrinter {
             args,
+            lock: Mutex::new(()),
             _styling: PhantomData,
         }
+    }
+
+    fn lock(&self) -> MutexGuard<'_, ()> {
+        self.lock.lock().unwrap()
     }
 }
 
 impl<S: Styling> MessagePrinter for FancyPrinter<S> {
     fn print(&self, message: &Message) {
+        let _lock = self.lock();
+
         let mut lines: Vec<_> = message
             .to_string()
             .split('\n')
@@ -41,6 +50,12 @@ impl<S: Styling> MessagePrinter for FancyPrinter<S> {
             .collect();
 
         let mut append = |line| lines.push((line, false));
+
+        if self.args.show_request_id {
+            if let Some(request_id) = message.request_id() {
+                append(format!("request ID = {}", request_id));
+            }
+        }
 
         if self.args.show_context {
             let context = message.context();
@@ -71,14 +86,6 @@ impl<S: Styling> MessagePrinter for FancyPrinter<S> {
                 print!("{}", timestamp.format("%Y-%m-%dT%H:%M:%S%.3f%:z"));
             } else {
                 print!("{:29}", "");
-            }
-
-            if let Some(request_id) = message.request_id().and_if(|| self.args.show_request_id) {
-                if is_first {
-                    print!(" [{}]", request_id);
-                } else {
-                    print!("{}", " ".repeat(3 + request_id.len()));
-                }
             }
 
             if is_first {
@@ -123,7 +130,7 @@ impl<S: Styling> MessagePrinter for FancyPrinter<S> {
 pub struct ColorStyling;
 pub struct NoColorStyling;
 
-pub trait Styling: private::Sealed {
+pub trait Styling: Send + Sync + private::Sealed {
     fn severity(_severity: Severity) -> &'static str {
         ""
     }

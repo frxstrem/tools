@@ -11,8 +11,7 @@ pub struct Message {
     text: String,
 
     /// Log message severity.
-    #[serde(default)]
-    severity: Severity,
+    severity: Option<Severity>,
 
     /// Timestamp of log message (in local time).
     #[serde(alias = "time", default, deserialize_with = "parse_datetime")]
@@ -39,8 +38,14 @@ impl Message {
         }
     }
 
+    pub fn set_default_severity(&mut self, default_severity: Severity) {
+        if self.severity.is_none() {
+            self.severity = Some(default_severity)
+        }
+    }
+
     pub fn severity(&self) -> Severity {
-        self.severity
+        self.severity.unwrap_or(Severity::Default)
     }
 
     pub fn timestamp(&self) -> Option<DateTime<Local>> {
