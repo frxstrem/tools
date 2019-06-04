@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::thread;
 
 mod args;
-use args::{Args, FormattingMode};
+use args::Args;
 
 #[macro_use]
 mod macros;
@@ -50,24 +50,19 @@ fn app_main() -> Result<i32, Box<dyn Error>> {
 }
 
 fn get_printer(args: &Args) -> Box<dyn MessagePrinter> {
-    match args.formatting {
-        FormattingMode::Plain => Box::new(printer::PlainPrinter),
-        FormattingMode::Colored => {
-            Box::new(printer::FancyPrinter::<printer::ColorStyling>::new(args))
-        }
-        FormattingMode::Uncolored => {
-            Box::new(printer::FancyPrinter::<printer::NoColorStyling>::new(args))
-        }
-        FormattingMode::Auto => {
-            let isatty = unsafe { libc_result!(libc::isatty(1)).unwrap() > 0 };
+    let plain = args.plain;
+    let colored = args.colored.unwrap_or_else(auto_color);
 
-            if isatty {
-                Box::new(printer::FancyPrinter::<printer::ColorStyling>::new(args))
-            } else {
-                Box::new(printer::FancyPrinter::<printer::NoColorStyling>::new(args))
-            }
-        }
+    match (plain, colored) {
+        (true, true) => Box::new(printer::PlainPrinter::<printer::ColorStyling>::default()),
+        (true, false) => Box::new(printer::PlainPrinter::<printer::NoColorStyling>::default()),
+        (false, true) => Box::new(printer::FancyPrinter::<printer::ColorStyling>::new(args)),
+        (false, false) => Box::new(printer::FancyPrinter::<printer::NoColorStyling>::new(args)),
     }
+}
+
+fn auto_color() -> bool {
+    unsafe { libc_result!(libc::isatty(1)).unwrap() > 0 }
 }
 
 fn printer_loop<R: Read>(reader: R, printer: &dyn MessagePrinter, default_severity: Severity) {
@@ -83,7 +78,11 @@ fn printer_loop<R: Read>(reader: R, printer: &dyn MessagePrinter, default_severi
     }
 }
 
-fn run_command(printer: Arc<dyn MessagePrinter>, command: &str, cmd_args: &[String]) -> Result<ExitStatus, Box<dyn Error>> {
+fn run_command(
+    printer: Arc<dyn MessagePrinter>,
+    command: &str,
+    cmd_args: &[String],
+) -> Result<ExitStatus, Box<dyn Error>> {
     let mut child = Command::new(command)
         .args(cmd_args)
         .stdin(Stdio::inherit())

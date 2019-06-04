@@ -15,7 +15,8 @@ pub struct Args {
 
     pub command: Option<Vec<String>>,
 
-    pub formatting: FormattingMode,
+    pub plain: bool,
+    pub colored: Option<bool>,
 }
 
 impl Args {
@@ -36,9 +37,9 @@ impl Args {
             (@arg source: -s --source
                 "Show source location for logs")
 
-            (@group formatting =>
-                (@arg plain: -p --plain
-                    "Only output text data")
+            (@arg plain: -p --plain
+                "Only output text data")
+            (@group color_mode =>
                 (@arg color: -c --color
                     "Output pretty-printed in color")
                 (@arg nocolor: -C --("no-color")
@@ -90,25 +91,16 @@ impl Args {
                 .values_of("command")
                 .map(|cmd| cmd.map(str::to_string).collect()),
 
-            formatting: {
-                if matches.is_present("plain") {
-                    FormattingMode::Plain
-                } else if matches.is_present("color") {
-                    FormattingMode::Colored
+            plain: matches.is_present("plain"),
+            colored: {
+                if matches.is_present("color") {
+                    Some(true)
                 } else if matches.is_present("nocolor") {
-                    FormattingMode::Uncolored
+                    Some(false)
                 } else {
-                    FormattingMode::Auto
+                    None
                 }
             },
         }
     }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub enum FormattingMode {
-    Auto,
-    Colored,
-    Uncolored,
-    Plain,
 }

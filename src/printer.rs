@@ -9,11 +9,23 @@ pub trait MessagePrinter: Send + Sync {
     fn print(&self, message: &Message);
 }
 
-pub struct PlainPrinter;
+#[derive(Copy, Clone)]
+pub struct PlainPrinter<S: Styling>(PhantomData<S>);
 
-impl MessagePrinter for PlainPrinter {
+impl<S: Styling> Default for PlainPrinter<S> {
+    fn default() -> PlainPrinter<S> {
+        PlainPrinter(PhantomData)
+    }
+}
+
+impl<S: Styling> MessagePrinter for PlainPrinter<S> {
     fn print(&self, message: &Message) {
-        println!("{}", message);
+        println!(
+            "{}{}{}",
+            S::severity(message.severity()),
+            message,
+            S::reset()
+        );
     }
 }
 
@@ -140,15 +152,19 @@ pub struct ColorStyling;
 pub struct NoColorStyling;
 
 pub trait Styling: Send + Sync + private::Sealed {
+    #[inline]
     fn severity(_severity: Severity) -> &'static str {
         ""
     }
+    #[inline]
     fn weak() -> &'static str {
         ""
     }
+    #[inline]
     fn strong() -> &'static str {
         ""
     }
+    #[inline]
     fn reset() -> &'static str {
         ""
     }
