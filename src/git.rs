@@ -53,11 +53,18 @@ pub fn clone_local(src_dir: impl AsRef<Path>, dst_dir: impl AsRef<Path>) -> io::
     Ok(())
 }
 
+pub fn clean_work_dir(work_dir: impl AsRef<Path>) -> io::Result<()> {
+    let work_dir = work_dir.as_ref();
+
+    gitc!("-C", work_dir, "clean", "-fxd")?;
+    Ok(())
+}
+
 pub fn checkout_detached(work_dir: impl AsRef<Path>, commit: impl AsRef<str>) -> io::Result<()> {
     let work_dir = work_dir.as_ref();
     let commit = commit.as_ref();
 
-    gitc!("-C", work_dir, "checkout", "--detach", commit)?;
+    gitc!("-C", work_dir, "checkout", "--force", "--detach", commit)?;
     Ok(())
 }
 

@@ -53,11 +53,18 @@ fn app(args: Args) -> Result<i32, Box<dyn Error>> {
             .flatten()
             .collect::<Vec<_>>();
 
+    // create temporary directory
+    let tmpdir = TempDir::new("git-corun")?;
+
+    // git clone into temporary directory
+    git::clone_local(&git_dir, &tmpdir)?;
+
     let mut last_exit_code = 0;
     for commit in commits {
         last_exit_code = run_app_for(
             &args,
             &git_dir,
+            tmpdir.as_ref(),
             &commit,
             stash_commit.as_ref().map(String::as_str),
         )?;
@@ -69,24 +76,22 @@ fn app(args: Args) -> Result<i32, Box<dyn Error>> {
 fn run_app_for(
     args: &Args,
     git_dir: &Path,
+    work_tree: &Path,
     commit: &str,
     stash_commit: Option<&str>,
 ) -> Result<i32, Box<dyn Error>> {
     // get commit hash
     let commit = git::get_commit_hash(&git_dir, commit)?;
 
-    // create temporary directory
-    let tmpdir = TempDir::new("git-corun")?;
-
-    // git clone into temporary directory
-    git::clone_local(&git_dir, &tmpdir)?;
-
     // check out directory
-    git::checkout_detached(&tmpdir, &commit)?;
+    git::checkout_detached(&work_tree, &commit)?;
+
+    // clean directory
+    git::clean_work_dir(&work_tree)?;
 
     if let Some(stash_commit) = stash_commit {
         // apply stash
-        git::apply_stash(&tmpdir, stash_commit)?;
+        git::apply_stash(&work_tree, stash_commit)?;
     }
 
     // print commit
@@ -95,7 +100,7 @@ fn run_app_for(
     }
 
     // run command in repo
-    let exit_status = run_in(&args, args.command.iter().map(String::as_str), &tmpdir)?;
+    let exit_status = run_in(&args, args.command.iter().map(String::as_str), &work_tree)?;
     let status = if exit_status.success() {
         Status::Success
     } else {
