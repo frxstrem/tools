@@ -88,6 +88,54 @@ pub enum Severity {
     Emergency = 800,
 }
 
+impl Severity {
+    pub fn validate_str(severity: String) -> Result<(), String> {
+        Severity::try_parse_str(&severity).map(|_| ())
+    }
+
+    pub fn try_parse_str(severity: &str) -> Result<Severity, String> {
+        if let Ok(severity) = severity.parse::<u64>() {
+            return Ok(Severity::parse_u64(severity));
+        }
+
+        let severity = severity.to_lowercase();
+        match severity.as_str() {
+            "emergency" => Ok(Severity::Emergency),
+            "alert" => Ok(Severity::Alert),
+            "critical" => Ok(Severity::Critical),
+            "error" => Ok(Severity::Error),
+            "warning" => Ok(Severity::Warning),
+            "notice" => Ok(Severity::Notice),
+            "info" => Ok(Severity::Info),
+            "debug" => Ok(Severity::Debug),
+            "default" => Ok(Severity::Default),
+            _ => Err(format!("Unknown severity level: {}", severity)),
+        }
+    }
+
+    pub fn parse_u64(severity: u64) -> Severity {
+        if severity >= (Severity::Emergency as u64) {
+            Severity::Emergency
+        } else if severity >= (Severity::Alert as u64) {
+            Severity::Alert
+        } else if severity >= (Severity::Critical as u64) {
+            Severity::Critical
+        } else if severity >= (Severity::Error as u64) {
+            Severity::Error
+        } else if severity >= (Severity::Warning as u64) {
+            Severity::Warning
+        } else if severity >= (Severity::Notice as u64) {
+            Severity::Notice
+        } else if severity >= (Severity::Info as u64) {
+            Severity::Info
+        } else if severity >= (Severity::Debug as u64) {
+            Severity::Debug
+        } else {
+            Severity::Default
+        }
+    }
+}
+
 impl Default for Severity {
     fn default() -> Severity {
         Severity::Default
@@ -106,38 +154,10 @@ impl<'de> Deserialize<'de> for Severity {
         D: Deserializer<'de>,
     {
         match StringOrNumber::<u64>::deserialize(deserializer)? {
-            StringOrNumber::String(severity) => match severity.to_lowercase().as_ref() {
-                "emergency" => Ok(Severity::Emergency),
-                "alert" => Ok(Severity::Alert),
-                "critical" => Ok(Severity::Critical),
-                "error" => Ok(Severity::Error),
-                "warning" => Ok(Severity::Warning),
-                "notice" => Ok(Severity::Notice),
-                "info" => Ok(Severity::Info),
-                "debug" => Ok(Severity::Debug),
-                _ => Ok(Severity::Default),
-            },
-            StringOrNumber::Number(severity) => {
-                if severity >= (Severity::Emergency as u64) {
-                    Ok(Severity::Emergency)
-                } else if severity >= (Severity::Alert as u64) {
-                    Ok(Severity::Alert)
-                } else if severity >= (Severity::Critical as u64) {
-                    Ok(Severity::Critical)
-                } else if severity >= (Severity::Error as u64) {
-                    Ok(Severity::Error)
-                } else if severity >= (Severity::Warning as u64) {
-                    Ok(Severity::Warning)
-                } else if severity >= (Severity::Notice as u64) {
-                    Ok(Severity::Notice)
-                } else if severity >= (Severity::Info as u64) {
-                    Ok(Severity::Info)
-                } else if severity >= (Severity::Debug as u64) {
-                    Ok(Severity::Debug)
-                } else {
-                    Ok(Severity::Default)
-                }
+            StringOrNumber::String(severity) => {
+                Ok(Severity::try_parse_str(&severity).unwrap_or_else(|_| Severity::Default))
             }
+            StringOrNumber::Number(severity) => Ok(Severity::parse_u64(severity)),
         }
     }
 }

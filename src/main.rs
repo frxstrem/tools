@@ -38,12 +38,12 @@ fn app_main() -> Result<i32, Box<dyn Error>> {
             let command = &cmd[0];
             let cmd_args = &cmd[1..];
 
-            let exit_status = run_command(printer.into(), &command, cmd_args)?;
+            let exit_status = run_command(printer.into(), &command, cmd_args, args.min_level)?;
             Ok(exit_status.code().unwrap_or(255))
         }
         None => {
             // read line by line from standard input
-            printer_loop(io::stdin(), printer.as_ref(), Severity::Default);
+            printer_loop(io::stdin(), printer.as_ref(), Severity::Default, args.min_level);
             Ok(0)
         }
     }
@@ -65,7 +65,7 @@ fn auto_color() -> bool {
     unsafe { libc_result!(libc::isatty(1)).unwrap() > 0 }
 }
 
-fn printer_loop<R: Read>(reader: R, printer: &dyn MessagePrinter, default_severity: Severity) {
+fn printer_loop<R: Read>(reader: R, printer: &dyn MessagePrinter, default_severity: Severity, min_severity: Option<Severity>) {
     let reader = BufReader::new(reader);
     for line in reader.lines().map(Result::unwrap) {
         // try to parse line as JSON, or create standard message from raw line
@@ -73,6 +73,12 @@ fn printer_loop<R: Read>(reader: R, printer: &dyn MessagePrinter, default_severi
             serde_json::from_str(&line).unwrap_or_else(|_| Message::from_raw(line));
 
         message.set_default_severity(default_severity);
+
+        if let Some(min_severity) = min_severity {
+            if message.severity() < min_severity {
+                continue;
+            }
+        }
 
         printer.print(&message);
     }
@@ -82,6 +88,7 @@ fn run_command(
     printer: Arc<dyn MessagePrinter>,
     command: &str,
     cmd_args: &[String],
+    min_severity: Option<Severity>,
 ) -> Result<ExitStatus, Box<dyn Error>> {
     let mut child = Command::new(command)
         .args(cmd_args)
@@ -96,11 +103,11 @@ fn run_command(
     // spawn threads
     let stdout_jh = {
         let printer = printer.clone();
-        thread::spawn(move || printer_loop(stdout, printer.as_ref(), Severity::Default))
+        thread::spawn(move || printer_loop(stdout, printer.as_ref(), Severity::Default, min_severity))
     };
     let stderr_jh = {
         let printer = printer.clone();
-        thread::spawn(move || printer_loop(stderr, printer.as_ref(), Severity::Error))
+        thread::spawn(move || printer_loop(stderr, printer.as_ref(), Severity::Error, min_severity))
     };
 
     // wait for process to stop

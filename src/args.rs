@@ -2,10 +2,14 @@ use std::env;
 
 use clap::clap_app;
 
+use crate::message::Severity;
+
 #[derive(Clone, Debug)]
 pub struct Args {
     pub debug: bool,
     pub compact: bool,
+
+    pub min_level: Option<Severity>,
 
     pub show_context: bool,
     pub show_source: bool,
@@ -26,6 +30,9 @@ impl Args {
                 "Enable debug output")
             (@arg compact: -z --compact
                 "Enable compact formatting")
+
+            (@arg min_level: -L --level [level] {Severity::validate_str}
+                "Only show log levels above this")
 
             (@arg request: -r --request
                 "Show request ID")
@@ -80,6 +87,12 @@ impl Args {
         Args {
             debug: matches.is_present("debug"),
             compact: matches.is_present("compact"),
+
+            min_level: matches
+                .value_of("min_level")
+                .map(Severity::try_parse_str)
+                .transpose()
+                .unwrap(),
 
             show_context: matches.is_present("context"),
             show_source: matches.is_present("source"),
