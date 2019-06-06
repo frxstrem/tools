@@ -1,0 +1,9 @@
+[package]
+name = "git-corun"
+version = "0.1.0"
+authors = ["Fredrik Østrem <fredrik.ostrem@cognite.com>"]
+edition = "2018"
+
+[dependencies]
+clap = "2.33.0"
+tempdir = "0.3.7"
