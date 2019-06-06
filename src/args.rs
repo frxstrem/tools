@@ -9,7 +9,7 @@ pub struct Args {
     pub debug: bool,
     pub compact: bool,
 
-    pub min_level: Option<Severity>,
+    pub severity_range: SeverityRange,
 
     pub show_context: bool,
     pub show_source: bool,
@@ -23,6 +23,8 @@ pub struct Args {
     pub colored: Option<bool>,
 }
 
+pub type SeverityRange = (Option<Severity>, Option<Severity>);
+
 impl Args {
     fn app<'a, 'b>() -> clap::App<'a, 'b> {
         clap_app!(("pretty-log") =>
@@ -31,8 +33,8 @@ impl Args {
             (@arg compact: -z --compact
                 "Enable compact formatting")
 
-            (@arg min_level: -L --level [level] {Severity::validate_str}
-                "Only show log levels above this")
+            (@arg min_level: -L --level [level] {Severity::validate_str})
+            (@arg max_level: --("max-level") [level] {Severity::validate_str})
 
             (@arg request: -r --request
                 "Show request ID")
@@ -84,15 +86,22 @@ impl Args {
         // parse arguments with clap
         let matches = Self::app().get_matches_from(args);
 
+        let min_level = matches
+                .value_of("min_level")
+                .map(Severity::try_parse_str)
+                .transpose()
+                .unwrap();
+        let max_level = matches
+                .value_of("max_level")
+                .map(Severity::try_parse_str)
+                .transpose()
+                .unwrap();
+
         Args {
             debug: matches.is_present("debug"),
             compact: matches.is_present("compact"),
 
-            min_level: matches
-                .value_of("min_level")
-                .map(Severity::try_parse_str)
-                .transpose()
-                .unwrap(),
+            severity_range: (min_level, max_level),
 
             show_context: matches.is_present("context"),
             show_source: matches.is_present("source"),

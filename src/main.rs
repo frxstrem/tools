@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::thread;
 
 mod args;
-use args::Args;
+use args::{Args, SeverityRange};
 
 #[macro_use]
 mod macros;
@@ -38,12 +38,12 @@ fn app_main() -> Result<i32, Box<dyn Error>> {
             let command = &cmd[0];
             let cmd_args = &cmd[1..];
 
-            let exit_status = run_command(printer.into(), &command, cmd_args, args.min_level)?;
+            let exit_status = run_command(printer.into(), &command, cmd_args, args.severity_range)?;
             Ok(exit_status.code().unwrap_or(255))
         }
         None => {
             // read line by line from standard input
-            printer_loop(io::stdin(), printer.as_ref(), Severity::Default, args.min_level);
+            printer_loop(io::stdin(), printer.as_ref(), Severity::Default, args.severity_range);
             Ok(0)
         }
     }
@@ -65,7 +65,7 @@ fn auto_color() -> bool {
     unsafe { libc_result!(libc::isatty(1)).unwrap() > 0 }
 }
 
-fn printer_loop<R: Read>(reader: R, printer: &dyn MessagePrinter, default_severity: Severity, min_severity: Option<Severity>) {
+fn printer_loop<R: Read>(reader: R, printer: &dyn MessagePrinter, default_severity: Severity, severity_range: SeverityRange) {
     let reader = BufReader::new(reader);
     for line in reader.lines().map(Result::unwrap) {
         // try to parse line as JSON, or create standard message from raw line
@@ -74,8 +74,13 @@ fn printer_loop<R: Read>(reader: R, printer: &dyn MessagePrinter, default_severi
 
         message.set_default_severity(default_severity);
 
-        if let Some(min_severity) = min_severity {
+        if let Some(min_severity) = severity_range.0 {
             if message.severity() < min_severity {
+                continue;
+            }
+        }
+        if let Some(max_severity) = severity_range.1 {
+            if message.severity() > max_severity {
                 continue;
             }
         }
@@ -88,7 +93,7 @@ fn run_command(
     printer: Arc<dyn MessagePrinter>,
     command: &str,
     cmd_args: &[String],
-    min_severity: Option<Severity>,
+    severity_range: SeverityRange,
 ) -> Result<ExitStatus, Box<dyn Error>> {
     let mut child = Command::new(command)
         .args(cmd_args)
@@ -103,11 +108,11 @@ fn run_command(
     // spawn threads
     let stdout_jh = {
         let printer = printer.clone();
-        thread::spawn(move || printer_loop(stdout, printer.as_ref(), Severity::Default, min_severity))
+        thread::spawn(move || printer_loop(stdout, printer.as_ref(), Severity::Default, severity_range))
     };
     let stderr_jh = {
         let printer = printer.clone();
-        thread::spawn(move || printer_loop(stderr, printer.as_ref(), Severity::Error, min_severity))
+        thread::spawn(move || printer_loop(stderr, printer.as_ref(), Severity::Error, severity_range))
     };
 
     // wait for process to stop
