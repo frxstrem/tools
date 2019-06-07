@@ -42,13 +42,14 @@ fn app(args: Args) -> Result<i32, Box<dyn Error>> {
     };
 
     // expand list of commits
-    let commits =
-        args.commits.iter()
-            .map(|commit| git::get_commit_hashes(&git_dir, commit))
-            .collect::<Result<Vec<_>,_>>()?
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
+    let commits = args
+        .commits
+        .iter()
+        .map(|commit| git::get_commit_hashes(&git_dir, commit))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
 
     // create temporary directory
     let tmpdir = TempDir::new("git-corun")?;
@@ -92,9 +93,7 @@ fn run_app_for(
     }
 
     // print commit
-    if !args.quiet {
-        print_commit(&git_dir, &commit, Some(Status::Pending))?;
-    }
+    print_commit(&git_dir, &commit, Some(Status::Pending))?;
 
     // run command in repo
     let exit_status = run_in(&args, args.command.iter().map(String::as_str), &work_tree)?;
@@ -105,6 +104,12 @@ fn run_app_for(
     };
 
     // print status
+    if !args.verbose {
+        let stdout = io::stdout();
+        let mut stdout = stdout.lock();
+        write!(stdout, "\x1b[1F\x1b[K")?;
+        stdout.flush()?;
+    }
     print_commit(&git_dir, &commit, Some(status))?;
 
     Ok(exit_status.code().unwrap_or(255))
@@ -144,21 +149,21 @@ where
         (cmd_first, cmd_rest)
     };
 
-    if args.quiet {
-        Command::new(&exec_name)
-            .args(&cmd_args)
-            .current_dir(&dir)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-    } else {
+    if args.verbose {
         Command::new(&exec_name)
             .args(&cmd_args)
             .current_dir(&dir)
             .stdin(Stdio::null())
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
+            .status()
+    } else {
+        Command::new(&exec_name)
+            .args(&cmd_args)
+            .current_dir(&dir)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .status()
     }
 }
@@ -168,7 +173,6 @@ enum Status {
     Pending,
     Success,
     Failure,
-    Unknown,
 }
 
 impl Status {
@@ -177,7 +181,6 @@ impl Status {
             Status::Pending => "%C(bold)%C(yellow)●%Creset",
             Status::Success => "%C(bold)%C(green)✔%Creset",
             Status::Failure => "%C(bold)%C(red)✘%Creset",
-            Status::Unknown => "%C(bold)%C(red)?%Creset",
         }
     }
 }
@@ -186,7 +189,7 @@ struct Args {
     apply_stash: bool,
     apply_index: bool,
     shell_command: bool,
-    quiet: bool,
+    verbose: bool,
 
     commits: Vec<String>,
     command: Vec<String>,
@@ -200,7 +203,7 @@ impl Args {
                 // (@arg apply_index: -i --index      "Apply index before running")
             )
             (@arg shell_command: -c            "Run as shell command")
-            (@arg quiet: -q                    "Only display final results")
+            (@arg verbose: -v --verbose        "Show output from commands")
             (@arg commits: [commits] ...       "List of commits to run on")
             (@arg command: <command> ... +last "Command to execute")
         )
@@ -210,14 +213,12 @@ impl Args {
             apply_stash: matches.is_present("apply_stash"),
             apply_index: false,
             shell_command: matches.is_present("shell_command"),
-            quiet: matches.is_present("quiet"),
+            verbose: matches.is_present("verbose"),
 
             commits: matches
                 .values_of("commits")
-                .map(|commits| commits
-                    .map(str::to_string)
-                    .collect())
-                .unwrap_or_else(|| vec![ "HEAD".to_string() ]),
+                .map(|commits| commits.map(str::to_string).collect())
+                .unwrap_or_else(|| vec!["HEAD".to_string()]),
             command: matches
                 .values_of("command")
                 .unwrap()
