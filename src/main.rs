@@ -7,9 +7,6 @@ use std::process::{self, Command, ExitStatus, Stdio};
 use clap::clap_app;
 use tempdir::TempDir;
 
-#[macro_use]
-mod macros;
-
 mod git;
 
 fn main() {
