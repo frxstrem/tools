@@ -72,7 +72,7 @@ pub fn apply_stash(work_dir: impl AsRef<Path>, commit: impl AsRef<str>) -> io::R
     let work_dir = work_dir.as_ref();
     let commit = commit.as_ref();
 
-    gitc!("-C", work_dir, "stash", "apply", commit)?;
+    gitc!("-C", work_dir, "stash", "apply", "--index", commit)?;
     Ok(())
 }
 
