@@ -44,6 +44,14 @@ impl Message {
         }
     }
 
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    pub fn set_text(&mut self, text: &str) {
+        self.text = text.to_string();
+    }
+
     pub fn severity(&self) -> Severity {
         self.severity.unwrap_or(Severity::Default)
     }

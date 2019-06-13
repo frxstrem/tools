@@ -1,6 +1,7 @@
 use std::env;
 
 use clap::clap_app;
+use regex::Regex;
 
 use crate::message::Severity;
 
@@ -13,6 +14,8 @@ pub struct Args {
 
     pub show_context: bool,
     pub show_source: bool,
+
+    pub grep: Option<String>,
 
     pub show_request_id: bool,
     pub show_process: bool,
@@ -45,6 +48,9 @@ impl Args {
                 "Show context data for logs")
             (@arg source: -s --source
                 "Show source location for logs")
+
+            (@arg grep: --grep [PATTERN] {is_regex}
+                "Filter log entries matching expression")
 
             (@arg plain: -p --plain
                 "Only output text data")
@@ -87,15 +93,15 @@ impl Args {
         let matches = Self::app().get_matches_from(args);
 
         let min_level = matches
-                .value_of("min_level")
-                .map(Severity::try_parse_str)
-                .transpose()
-                .unwrap();
+            .value_of("min_level")
+            .map(Severity::try_parse_str)
+            .transpose()
+            .unwrap();
         let max_level = matches
-                .value_of("max_level")
-                .map(Severity::try_parse_str)
-                .transpose()
-                .unwrap();
+            .value_of("max_level")
+            .map(Severity::try_parse_str)
+            .transpose()
+            .unwrap();
 
         Args {
             debug: matches.is_present("debug"),
@@ -113,6 +119,8 @@ impl Args {
                 .values_of("command")
                 .map(|cmd| cmd.map(str::to_string).collect()),
 
+            grep: matches.value_of("grep").map(str::to_string),
+
             plain: matches.is_present("plain"),
             colored: {
                 if matches.is_present("color") {
@@ -125,4 +133,8 @@ impl Args {
             },
         }
     }
+}
+
+fn is_regex(value: String) -> Result<(), String> {
+    Regex::new(&value).map(|_| ()).map_err(|err| err.to_string())
 }

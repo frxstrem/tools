@@ -7,6 +7,8 @@ use crate::message::{Message, Severity};
 
 pub trait MessagePrinter: Send + Sync {
     fn print(&self, message: &Message);
+
+    fn emphasize(&self, text: &str) -> String;
 }
 
 #[derive(Copy, Clone)]
@@ -26,6 +28,10 @@ impl<S: Styling> MessagePrinter for PlainPrinter<S> {
             message,
             S::reset()
         );
+    }
+
+    fn emphasize(&self, text: &str) -> String {
+        format!("{}{}{}", S::underline(), text, S::no_underline())
     }
 }
 
@@ -146,6 +152,10 @@ impl<S: Styling> MessagePrinter for FancyPrinter<S> {
             }
         }
     }
+
+    fn emphasize(&self, text: &str) -> String {
+        format!("{}{}{}", S::underline(), text, S::no_underline())
+    }
 }
 
 pub struct ColorStyling;
@@ -166,6 +176,14 @@ pub trait Styling: Send + Sync + private::Sealed {
     }
     #[inline]
     fn reset() -> &'static str {
+        ""
+    }
+    #[inline]
+    fn underline() -> &'static str {
+        ""
+    }
+    #[inline]
+    fn no_underline() -> &'static str {
         ""
     }
 }
@@ -193,6 +211,13 @@ impl Styling for ColorStyling {
     }
     fn reset() -> &'static str {
         "\x1b[0m"
+    }
+
+    fn underline() -> &'static str {
+        "\x1b[4m"
+    }
+    fn no_underline() -> &'static str {
+        "\x1b[24m"
     }
 }
 
