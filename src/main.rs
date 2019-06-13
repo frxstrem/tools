@@ -35,7 +35,9 @@ fn app_main() -> Result<i32, Box<dyn Error>> {
 
     let printer = get_printer(&args);
 
-    let grep = args.grep.as_ref().map(|pattern| Regex::new(pattern).unwrap());
+    let grep = args.grep.as_ref()
+        .map(|pattern| Regex::new(pattern).unwrap())
+        .map(|regex| (regex, args.grep_show_all));
 
     match args.command {
         Some(cmd) => {
@@ -80,7 +82,7 @@ fn printer_loop<R: Read>(
     printer: &dyn MessagePrinter,
     default_severity: Severity,
     severity_range: SeverityRange,
-    grep: Option<Regex>,
+    grep: Option<(Regex, bool)>,
 ) {
 
     let reader = BufReader::new(reader);
@@ -89,8 +91,8 @@ fn printer_loop<R: Read>(
         let mut message: Message =
             serde_json::from_str(&line).unwrap_or_else(|_| Message::from_raw(line));
 
-        if let Some(grep) = grep.as_ref() {
-            if !grep.is_match(message.text()) {
+        if let Some((grep, show_all)) = grep.as_ref() {
+            if !show_all && !grep.is_match(message.text()) {
                 continue;
             }
 
@@ -122,7 +124,7 @@ fn run_command(
     command: &str,
     cmd_args: &[String],
     severity_range: SeverityRange,
-    grep: Option<Regex>,
+    grep: Option<(Regex, bool)>,
 ) -> Result<ExitStatus, Box<dyn Error>> {
     let mut child = Command::new(command)
         .args(cmd_args)

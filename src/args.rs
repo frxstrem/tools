@@ -16,6 +16,7 @@ pub struct Args {
     pub show_source: bool,
 
     pub grep: Option<String>,
+    pub grep_show_all: bool,
 
     pub show_request_id: bool,
     pub show_process: bool,
@@ -49,8 +50,10 @@ impl Args {
             (@arg source: -s --source
                 "Show source location for logs")
 
-            (@arg grep: --grep [PATTERN] {is_regex}
+            (@arg grep: -g --grep [PATTERN] {is_regex}
                 "Filter log entries matching expression")
+            (@arg grep_show_all: -G --("grep-show-all")
+                "Show non-matching lines as well when using --grep")
 
             (@arg plain: -p --plain
                 "Only output text data")
@@ -120,6 +123,7 @@ impl Args {
                 .map(|cmd| cmd.map(str::to_string).collect()),
 
             grep: matches.value_of("grep").map(str::to_string),
+            grep_show_all: matches.is_present("grep_show_all"),
 
             plain: matches.is_present("plain"),
             colored: {

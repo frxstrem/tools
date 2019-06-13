@@ -31,7 +31,7 @@ impl<S: Styling> MessagePrinter for PlainPrinter<S> {
     }
 
     fn emphasize(&self, text: &str) -> String {
-        format!("{}{}{}", S::underline(), text, S::no_underline())
+        format!("{}{}{}", S::emphasize(), text, S::no_emphasize())
     }
 }
 
@@ -154,7 +154,7 @@ impl<S: Styling> MessagePrinter for FancyPrinter<S> {
     }
 
     fn emphasize(&self, text: &str) -> String {
-        format!("{}{}{}", S::underline(), text, S::no_underline())
+        format!("{}{}{}", S::emphasize(), text, S::no_emphasize())
     }
 }
 
@@ -179,11 +179,11 @@ pub trait Styling: Send + Sync + private::Sealed {
         ""
     }
     #[inline]
-    fn underline() -> &'static str {
+    fn emphasize() -> &'static str {
         ""
     }
     #[inline]
-    fn no_underline() -> &'static str {
+    fn no_emphasize() -> &'static str {
         ""
     }
 }
@@ -213,11 +213,11 @@ impl Styling for ColorStyling {
         "\x1b[0m"
     }
 
-    fn underline() -> &'static str {
-        "\x1b[4m"
+    fn emphasize() -> &'static str {
+        "\x1b[7m"
     }
-    fn no_underline() -> &'static str {
-        "\x1b[24m"
+    fn no_emphasize() -> &'static str {
+        "\x1b[27m"
     }
 }
 
