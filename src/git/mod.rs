@@ -1,17 +1,9 @@
-use std::ffi::OsStr;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-macro_rules! gitc_args {
-    ($($args:expr),*) => {
-        &[ $( AsRef::<OsStr>::as_ref(&$args) ),* ]
-    };
-}
-
-macro_rules! gitc {
-    ($($args:expr),*) => { run_gitc(gitc_args!($($args),*)) };
-}
+#[macro_use]
+pub mod run;
 
 pub fn get_git_dir() -> io::Result<PathBuf> {
     let git_dir = gitc!("rev-parse", "--git-dir")?;
@@ -89,6 +81,8 @@ pub fn show_commit(
     let commit = commit.as_ref();
     let format = format.as_ref();
 
+    let pretty_format = format!("--pretty=format:{}", format);
+
     let output = Command::new("git")
         .args(gitc_args!(
             "--git-dir",
@@ -96,7 +90,7 @@ pub fn show_commit(
             "show",
             "--quiet",
             "--no-patch",
-            format!("--pretty=format:{}", format),
+            pretty_format,
             "--date=format:%e %b %Y %H:%M",
             commit
         ))
@@ -113,25 +107,4 @@ pub fn show_commit(
     }
 
     Ok(())
-}
-
-pub fn run_gitc<S>(args: &[S]) -> io::Result<String>
-where
-    S: AsRef<OsStr>,
-{
-    let output = Command::new("git").args(args).output()?;
-
-    if !output.status.success() {
-        let error = String::from_utf8_lossy(&output.stderr);
-        let error = error.trim_end_matches('\n');
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("git error: {}", error),
-        ));
-    }
-
-    let result = String::from_utf8_lossy(&output.stdout)
-        .trim_end_matches('\n')
-        .to_string();
-    Ok(result)
 }
