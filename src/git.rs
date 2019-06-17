@@ -42,7 +42,11 @@ pub fn get_commit_hashes(
     }
 
     let git_hashes = gitc!("--git-dir", git_dir, "rev-list", "--reverse", ref_or_range)?;
-    Ok(git_hashes.split('\n').map(str::to_string).collect())
+    Ok(git_hashes
+        .split('\n')
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect())
 }
 
 pub fn clone_local(src_dir: impl AsRef<Path>, dst_dir: impl AsRef<Path>) -> io::Result<()> {
