@@ -1,8 +1,8 @@
+use crossbeam::scope;
 use std::error::Error;
 use std::io::{self, BufRead, BufReader, Read};
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::Arc;
-use std::thread;
 
 mod args;
 use args::{Args, SeverityRange};
@@ -18,7 +18,7 @@ use message::{Message, Severity};
 mod printer;
 use printer::MessagePrinter;
 
-use regex::{Regex, Captures};
+use regex::{Captures, Regex};
 
 fn main() {
     match app_main() {
@@ -35,7 +35,9 @@ fn app_main() -> Result<i32, Box<dyn Error>> {
 
     let printer = get_printer(&args);
 
-    let grep = args.grep.as_ref()
+    let grep = args
+        .grep
+        .as_ref()
         .map(|pattern| Regex::new(pattern).unwrap())
         .map(|regex| (regex, args.grep_show_all));
 
@@ -84,7 +86,6 @@ fn printer_loop<R: Read>(
     severity_range: SeverityRange,
     grep: Option<(Regex, bool)>,
 ) {
-
     let reader = BufReader::new(reader);
     for line in reader.lines().map(Result::unwrap) {
         // try to parse line as JSON, or create standard message from raw line
@@ -96,9 +97,11 @@ fn printer_loop<R: Read>(
                 continue;
             }
 
-            let text = grep.replace_all(message.text(), |captures: &Captures| {
-                printer.emphasize(captures.get(0).unwrap().as_str())
-            }).into_owned();
+            let text = grep
+                .replace_all(message.text(), |captures: &Captures| {
+                    printer.emphasize(captures.get(0).unwrap().as_str())
+                })
+                .into_owned();
             message.set_text(&text);
         }
 
@@ -136,29 +139,29 @@ fn run_command(
     let stdout = child.stdout.take().expect("take stdout");
     let stderr = child.stderr.take().expect("take stderr");
 
-    // spawn threads
-    let stdout_jh = {
-        let printer = printer.clone();
-        let grep = grep.clone();
-        thread::spawn(move || {
-            printer_loop(stdout, printer.as_ref(), Severity::Default, severity_range, grep)
-        })
-    };
-    let stderr_jh = {
-        let printer = printer.clone();
-        let grep = grep.clone();
-        thread::spawn(move || {
-            printer_loop(stderr, printer.as_ref(), Severity::Error, severity_range, grep)
-        })
-    };
+    scope(|s| {
+        s.spawn(|_| {
+            printer_loop(
+                stdout,
+                printer.as_ref(),
+                Severity::Default,
+                severity_range,
+                grep,
+            )
+        });
 
-    // wait for process to stop
-    let exit_status = child.wait()?;
+        s.spawn(|_| {
+            printer_loop(
+                stderr,
+                printer.as_ref(),
+                Severity::Error,
+                severity_range,
+                grep,
+            )
+        });
 
-    // join threads
-    stdout_jh.join().unwrap();
-    stderr_jh.join().unwrap();
-
-    // success
-    Ok(exit_status)
+        child.wait()
+    })
+    .unwrap()
+    .map_err(|err| err.into())
 }

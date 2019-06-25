@@ -140,5 +140,7 @@ impl Args {
 }
 
 fn is_regex(value: String) -> Result<(), String> {
-    Regex::new(&value).map(|_| ()).map_err(|err| err.to_string())
+    Regex::new(&value)
+        .map(|_| ())
+        .map_err(|err| err.to_string())
 }
