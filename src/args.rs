@@ -12,6 +12,8 @@ pub struct Args {
 
     pub severity_range: SeverityRange,
 
+    pub raw: bool,
+
     pub show_context: bool,
     pub show_source: bool,
 
@@ -20,6 +22,8 @@ pub struct Args {
 
     pub show_request_id: bool,
     pub show_process: bool,
+
+    pub request_id: Option<String>,
 
     pub command: Option<Vec<String>>,
 
@@ -40,10 +44,16 @@ impl Args {
             (@arg min_level: -L --level [level] {Severity::validate_str})
             (@arg max_level: --("max-level") [level] {Severity::validate_str})
 
-            (@arg request: -r --request
+            (@arg show_request_id: -r --("show-request")
                 "Show request ID")
             (@arg process: -P --process
                 "Show process name")
+
+            (@arg request_id: -R --request [id]
+                "Filter by request ID")
+
+            (@arg raw: -Z --raw
+                "Do not parse JSON")
 
             (@arg context: -x --context
                 "Show context data for logs")
@@ -86,6 +96,13 @@ impl Args {
                 args.extend(env_args.split_whitespace().map(str::to_owned));
             }
 
+            // then, --request REQUEST_ID if the REQUEST_ID environment variable
+            // is set
+            if let Ok(request_id) = env::var("REQUEST_ID") {
+                args.push("--request".to_string());
+                args.push(request_id);
+            }
+
             // then, any arguments from the command line
             args.extend(cmd_args.into_iter());
 
@@ -112,11 +129,15 @@ impl Args {
 
             severity_range: (min_level, max_level),
 
+            raw: matches.is_present("raw"),
+
             show_context: matches.is_present("context"),
             show_source: matches.is_present("source"),
 
-            show_request_id: matches.is_present("request"),
+            show_request_id: matches.is_present("show_request_id"),
             show_process: matches.is_present("process"),
+
+            request_id: matches.value_of("request_id").map(str::to_string),
 
             command: matches
                 .values_of("command")

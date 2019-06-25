@@ -116,10 +116,15 @@ impl<S: Styling> MessagePrinter for FancyPrinter<S> {
             }
 
             if let Some(process_name) = message.process_name().and_if(|| self.args.show_process) {
+                const PROCESS_NAME_MIN_WIDTH: usize = 8;
                 if is_first {
-                    print!("[{}] ", process_name);
+                    if process_name.len() < PROCESS_NAME_MIN_WIDTH {
+                        print!("[{:}] {}", process_name, " ".repeat(PROCESS_NAME_MIN_WIDTH - process_name.len()));
+                    } else {
+                        print!("[{:}] ", process_name);
+                    }
                 } else {
-                    print!("{}", " ".repeat(3 + process_name.len()));
+                    print!("{:13}", " ".repeat(3 + process_name.len().max(PROCESS_NAME_MIN_WIDTH)));
                 }
             }
 
@@ -179,6 +184,14 @@ pub trait Styling: Send + Sync + private::Sealed {
         ""
     }
     #[inline]
+    fn underline() -> &'static str {
+        ""
+    }
+    #[inline]
+    fn no_underline() -> &'static str {
+        ""
+    }
+    #[inline]
     fn emphasize() -> &'static str {
         ""
     }
@@ -211,6 +224,13 @@ impl Styling for ColorStyling {
     }
     fn reset() -> &'static str {
         "\x1b[0m"
+    }
+
+    fn underline() -> &'static str {
+        "\x1b[4m"
+    }
+    fn no_underline() -> &'static str {
+        "\x1b[24m"
     }
 
     fn emphasize() -> &'static str {

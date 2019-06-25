@@ -46,7 +46,15 @@ fn app_main() -> Result<i32, Box<dyn Error>> {
             let command = &cmd[0];
             let cmd_args = &cmd[1..];
 
-            let exit_status = run_command(printer.into(), &command, cmd_args, args.severity_range, grep)?;
+            let exit_status = run_command(
+                printer.into(),
+                &command,
+                cmd_args,
+                args.severity_range,
+                grep,
+                args.request_id.as_ref().map(String::as_str),
+                args.raw,
+            )?;
             Ok(exit_status.code().unwrap_or(255))
         }
         None => {
@@ -56,7 +64,9 @@ fn app_main() -> Result<i32, Box<dyn Error>> {
                 printer.as_ref(),
                 Severity::Default,
                 args.severity_range,
-                grep,
+                grep.as_ref(),
+                args.request_id.as_ref().map(String::as_str),
+                args.raw,
             );
             Ok(0)
         }
@@ -84,13 +94,29 @@ fn printer_loop<R: Read>(
     printer: &dyn MessagePrinter,
     default_severity: Severity,
     severity_range: SeverityRange,
-    grep: Option<(Regex, bool)>,
+    grep: Option<&(Regex, bool)>,
+    request_id: Option<&str>,
+    raw: bool,
 ) {
     let reader = BufReader::new(reader);
     for line in reader.lines().map(Result::unwrap) {
         // try to parse line as JSON, or create standard message from raw line
-        let mut message: Message =
-            serde_json::from_str(&line).unwrap_or_else(|_| Message::from_raw(line));
+        let mut message: Message = if raw {
+            Message::from_raw(line)
+        } else {
+            serde_json::from_str(&line).unwrap_or_else(|_| Message::from_raw(line))
+        };
+
+        if let Some(request_id) = request_id {
+            match message.request_id() {
+                Some(message_request_id) => {
+                    if message_request_id != request_id {
+                        continue;
+                    }
+                }
+                None => continue,
+            }
+        }
 
         if let Some((grep, show_all)) = grep.as_ref() {
             if !show_all && !grep.is_match(message.text()) {
@@ -128,6 +154,8 @@ fn run_command(
     cmd_args: &[String],
     severity_range: SeverityRange,
     grep: Option<(Regex, bool)>,
+    request_id: Option<&str>,
+    raw: bool,
 ) -> Result<ExitStatus, Box<dyn Error>> {
     let mut child = Command::new(command)
         .args(cmd_args)
@@ -146,7 +174,9 @@ fn run_command(
                 printer.as_ref(),
                 Severity::Default,
                 severity_range,
-                grep,
+                grep.as_ref(),
+                request_id,
+                raw,
             )
         });
 
@@ -156,7 +186,9 @@ fn run_command(
                 printer.as_ref(),
                 Severity::Error,
                 severity_range,
-                grep,
+                grep.as_ref(),
+                request_id,
+                raw,
             )
         });
 

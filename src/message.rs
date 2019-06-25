@@ -21,10 +21,6 @@ pub struct Message {
     #[serde(rename = "sourceLocation", alias = "src")]
     source_location: Option<SourceLocation>,
 
-    /// Name of process that logged this message.
-    #[serde(rename = "processName")]
-    process_name: Option<String>,
-
     /// Arbitrary context data
     #[serde(default)]
     context: HashMap<String, String>,
@@ -65,7 +61,7 @@ impl Message {
     }
 
     pub fn process_name(&self) -> Option<&str> {
-        self.process_name.as_ref().map(String::as_ref)
+        self.context.get("processName").map(String::as_ref)
     }
 
     pub fn context(&self) -> &HashMap<String, String> {
