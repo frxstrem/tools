@@ -1,39 +1,11 @@
 use std::marker::PhantomData;
 use std::sync::{Mutex, MutexGuard};
 
+use super::styling::*;
+use super::MessagePrinter;
 use crate::args::Args;
 use crate::ext::*;
-use crate::message::{Message, Severity};
-
-pub trait MessagePrinter: Send + Sync {
-    fn print(&self, message: &Message);
-
-    fn emphasize(&self, text: &str) -> String;
-}
-
-#[derive(Copy, Clone)]
-pub struct PlainPrinter<S: Styling>(PhantomData<S>);
-
-impl<S: Styling> Default for PlainPrinter<S> {
-    fn default() -> PlainPrinter<S> {
-        PlainPrinter(PhantomData)
-    }
-}
-
-impl<S: Styling> MessagePrinter for PlainPrinter<S> {
-    fn print(&self, message: &Message) {
-        println!(
-            "{}{}{}",
-            S::severity(message.severity()),
-            message,
-            S::reset()
-        );
-    }
-
-    fn emphasize(&self, text: &str) -> String {
-        format!("{}{}{}", S::emphasize(), text, S::no_emphasize())
-    }
-}
+use crate::message::Message;
 
 pub struct FancyPrinter<S: Styling> {
     args: Args,
@@ -119,12 +91,19 @@ impl<S: Styling> MessagePrinter for FancyPrinter<S> {
                 const PROCESS_NAME_MIN_WIDTH: usize = 8;
                 if is_first {
                     if process_name.len() < PROCESS_NAME_MIN_WIDTH {
-                        print!("[{:}] {}", process_name, " ".repeat(PROCESS_NAME_MIN_WIDTH - process_name.len()));
+                        print!(
+                            "[{:}] {}",
+                            process_name,
+                            " ".repeat(PROCESS_NAME_MIN_WIDTH - process_name.len())
+                        );
                     } else {
                         print!("[{:}] ", process_name);
                     }
                 } else {
-                    print!("{:13}", " ".repeat(3 + process_name.len().max(PROCESS_NAME_MIN_WIDTH)));
+                    print!(
+                        "{:13}",
+                        " ".repeat(3 + process_name.len().max(PROCESS_NAME_MIN_WIDTH))
+                    );
                 }
             }
 
@@ -161,90 +140,4 @@ impl<S: Styling> MessagePrinter for FancyPrinter<S> {
     fn emphasize(&self, text: &str) -> String {
         format!("{}{}{}", S::emphasize(), text, S::no_emphasize())
     }
-}
-
-pub struct ColorStyling;
-pub struct NoColorStyling;
-
-pub trait Styling: Send + Sync + private::Sealed {
-    #[inline]
-    fn severity(_severity: Severity) -> &'static str {
-        ""
-    }
-    #[inline]
-    fn weak() -> &'static str {
-        ""
-    }
-    #[inline]
-    fn strong() -> &'static str {
-        ""
-    }
-    #[inline]
-    fn reset() -> &'static str {
-        ""
-    }
-    #[inline]
-    fn underline() -> &'static str {
-        ""
-    }
-    #[inline]
-    fn no_underline() -> &'static str {
-        ""
-    }
-    #[inline]
-    fn emphasize() -> &'static str {
-        ""
-    }
-    #[inline]
-    fn no_emphasize() -> &'static str {
-        ""
-    }
-}
-
-impl Styling for ColorStyling {
-    fn severity(severity: Severity) -> &'static str {
-        if severity >= Severity::Error {
-            "\x1b[31m"
-        } else if severity >= Severity::Warning {
-            "\x1b[33m"
-        } else if severity >= Severity::Info {
-            "\x1b[34m"
-        } else if severity >= Severity::Debug {
-            "\x1b[32m"
-        } else {
-            ""
-        }
-    }
-
-    fn weak() -> &'static str {
-        "\x1b[2m"
-    }
-    fn strong() -> &'static str {
-        "\x1b[1m"
-    }
-    fn reset() -> &'static str {
-        "\x1b[0m"
-    }
-
-    fn underline() -> &'static str {
-        "\x1b[4m"
-    }
-    fn no_underline() -> &'static str {
-        "\x1b[24m"
-    }
-
-    fn emphasize() -> &'static str {
-        "\x1b[7m"
-    }
-    fn no_emphasize() -> &'static str {
-        "\x1b[27m"
-    }
-}
-
-impl Styling for NoColorStyling {}
-
-mod private {
-    pub trait Sealed {}
-    impl Sealed for super::ColorStyling {}
-    impl Sealed for super::NoColorStyling {}
 }
