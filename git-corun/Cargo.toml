@@ -7,5 +7,6 @@ license = "MIT"
 repository = "https://github.com/frxstrem/tools"
 
 [dependencies]
+shared = { path = "../shared" }
 clap = "2.33.0"
 tempdir = "0.3.7"

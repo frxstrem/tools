@@ -4,10 +4,10 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::process::{self, Command, ExitStatus, Stdio};
 
+use shared::git_old as git;
+
 use clap::clap_app;
 use tempdir::TempDir;
-
-mod git;
 
 fn main() {
     let args = Args::parse().unwrap_or_else(|err| {
