@@ -1,7 +1,7 @@
 [workspace]
 members = [
-  "shared",
-  "pretty-log",
-  "git-corun",
-  "luxa",
+  "lib/shared",
+  "bin/pretty-log",
+  "bin/git-corun",
+  "bin/luxa",
 ]
