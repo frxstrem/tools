@@ -1,0 +1,9 @@
+[package]
+name = "luxa"
+version = "0.1.0"
+authors = ["Fredrik Østrem <fredrik.ostrem@cognite.com>"]
+edition = "2018"
+
+[dependencies]
+hidapi = "0.5.2"
+clap = "2.32.0"

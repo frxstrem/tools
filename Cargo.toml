@@ -3,4 +3,5 @@ members = [
   "shared",
   "pretty-log",
   "git-corun",
+  "luxa",
 ]
