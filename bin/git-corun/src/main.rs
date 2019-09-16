@@ -1,5 +1,3 @@
-mod tempdir;
-
 use std::error::Error;
 use std::fmt::Display;
 use std::fs;
@@ -11,8 +9,6 @@ use chrono::{prelude::*, Duration, Local};
 use clap::clap_app;
 
 use shared::git_old as git;
-
-use tempdir::*;
 
 fn main() {
     let args = Args::parse().unwrap_or_else(|err| {
@@ -173,37 +169,45 @@ where
     }
 }
 
-fn create_directory(args: &Args) -> io::Result<TempDir> {
+fn default_base_dir() -> Option<PathBuf> {
+    Some(dirs::home_dir()?.join(".git-corun"))
+}
+
+fn create_directory(args: &Args) -> io::Result<PathBuf> {
     const DATE_FORMAT_STR: &str = "%Y%m%d-%H%M%S-%f";
     let name = Local::now().format(DATE_FORMAT_STR).to_string();
     let name = Path::new(&name);
 
-    if let Some(base_dir) = &args.base_dir {
-        // clean up existing build directories
-        if base_dir.exists() {
-            let now = Local::now();
+    let base_dir = args.base_dir.clone()
+        .or_else(default_base_dir)
+        .expect("no home dir");
 
-            fs::read_dir(base_dir)?
-                .flat_map(Result::ok)
-                .map(|entry| entry.path())
-                .flat_map(|path| {
-                    let name = path.file_name()?.to_string_lossy().to_string();
-                    let date = Local.datetime_from_str(&name, DATE_FORMAT_STR).ok()?;
-                    Some((path, date))
-                })
-                .filter(|(_, date)| now.signed_duration_since(*date) > Duration::weeks(7))
-                .for_each(|(path, _)| {
-                    eprintln!("Removing old directory: {:?}", path);
-                    if let Err(err) = fs::remove_dir_all(path) {
-                        eprintln!("  Failed to remove directory: {}", err);
-                    }
-                });
-        }
+    // clean up existing build directories
+    if base_dir.exists() {
+        let now = Local::now();
 
-        TempDir::new(base_dir.join(name), false)
-    } else {
-        TempDir::new_temp(name)
+        fs::read_dir(&base_dir)?
+            .flat_map(Result::ok)
+            .map(|entry| entry.path())
+            .flat_map(|path| {
+                let name = path.file_name()?.to_string_lossy().to_string();
+                let date = Local.datetime_from_str(&name, DATE_FORMAT_STR).ok()?;
+                Some((path, date))
+            })
+            .filter(|(_, date)| now.signed_duration_since(*date) > Duration::weeks(7))
+            .for_each(|(path, _)| {
+                eprintln!("Removing old directory: {:?}", path);
+                if let Err(err) = fs::remove_dir_all(path) {
+                    eprintln!("  Failed to remove directory: {}", err);
+                }
+            });
     }
+
+    // create new directory
+    let path = base_dir.join(name);
+    fs::create_dir_all(&path)?;
+    Ok(path)
+
 }
 
 #[derive(Copy, Clone, Debug)]
