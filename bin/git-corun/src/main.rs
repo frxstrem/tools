@@ -1,13 +1,18 @@
+mod tempdir;
+
 use std::error::Error;
 use std::fmt::Display;
+use std::fs;
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{self, Command, ExitStatus, Stdio};
+
+use chrono::{prelude::*, Duration, Local};
+use clap::clap_app;
 
 use shared::git_old as git;
 
-use clap::clap_app;
-use tempdir::TempDir;
+use tempdir::*;
 
 fn main() {
     let args = Args::parse().unwrap_or_else(|err| {
@@ -51,8 +56,8 @@ fn app(args: Args) -> Result<i32, Box<dyn Error>> {
         .flatten()
         .collect::<Vec<_>>();
 
-    // create temporary directory
-    let tmpdir = TempDir::new("git-corun")?;
+    // create temporary directory (and possibly clean up old ones)
+    let tmpdir = create_directory(&args)?;
 
     // git clone into temporary directory
     git::clone_local(&git_dir, &tmpdir)?;
@@ -168,6 +173,39 @@ where
     }
 }
 
+fn create_directory(args: &Args) -> io::Result<TempDir> {
+    const DATE_FORMAT_STR: &str = "%Y%m%d-%H%M%S-%f";
+    let name = Local::now().format(DATE_FORMAT_STR).to_string();
+    let name = Path::new(&name);
+
+    if let Some(base_dir) = &args.base_dir {
+        // clean up existing build directories
+        if base_dir.exists() {
+            let now = Local::now();
+
+            fs::read_dir(base_dir)?
+                .flat_map(Result::ok)
+                .map(|entry| entry.path())
+                .flat_map(|path| {
+                    let name = path.file_name()?.to_string_lossy().to_string();
+                    let date = Local.datetime_from_str(&name, DATE_FORMAT_STR).ok()?;
+                    Some((path, date))
+                })
+                .filter(|(_, date)| now.signed_duration_since(*date) > Duration::weeks(7))
+                .for_each(|(path, _)| {
+                    eprintln!("Removing old directory: {:?}", path);
+                    if let Err(err) = fs::remove_dir_all(path) {
+                        eprintln!("  Failed to remove directory: {}", err);
+                    }
+                });
+        }
+
+        TempDir::new(base_dir.join(name), false)
+    } else {
+        TempDir::new_temp(name)
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 enum Status {
     Pending,
@@ -186,6 +224,8 @@ impl Status {
 }
 
 struct Args {
+    base_dir: Option<PathBuf>,
+
     apply_stash: bool,
     apply_index: bool,
     shell_command: bool,
@@ -202,14 +242,17 @@ impl Args {
                 (@arg apply_stash: -s --stash      "Apply latest stash before running")
                 // (@arg apply_index: -i --index      "Apply index before running")
             )
-            (@arg shell_command: -c            "Run as shell command")
-            (@arg verbose: -v --verbose        "Show output from commands")
-            (@arg commits: [commits] ...       "List of commits to run on")
-            (@arg command: <command> ... +last "Command to execute")
+            (@arg shell_command: -c               "Run as shell command")
+            (@arg verbose: -v --verbose           "Show output from commands")
+            (@arg base_dir: -d --dir [directory]  "Base directory for running code in")
+            (@arg commits: [commits] ...          "List of commits to run on")
+            (@arg command: <command> ... +last    "Command to execute")
         )
         .get_matches_safe()?;
 
         Ok(Args {
+            base_dir: matches.value_of("base_dir").map(PathBuf::from),
+
             apply_stash: matches.is_present("apply_stash"),
             apply_index: false,
             shell_command: matches.is_present("shell_command"),
