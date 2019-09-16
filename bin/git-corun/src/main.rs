@@ -170,45 +170,46 @@ where
     }
 }
 
-fn default_base_dir() -> Option<PathBuf> {
-    Some(dirs::home_dir()?.join(".git-corun"))
+fn default_base_dir() -> PathBuf {
+    dirs::home_dir().expect("no home dir").join(".git-corun")
 }
 
 fn create_directory(args: &Args) -> io::Result<PathBuf> {
     const DATE_FORMAT_STR: &str = "%Y%m%d-%H%M%S-%f";
-    let name = Local::now().format(DATE_FORMAT_STR).to_string();
-    let name = Path::new(&name);
 
-    let base_dir = args.base_dir.clone()
-        .or_else(default_base_dir)
-        .expect("no home dir");
+    let path = match &args.dir {
+        Some(dir) => dir.clone(),
+        None => {
+            let base_dir = default_base_dir();
+            // clean up existing build directories
+            if base_dir.exists() {
+                let now = Local::now();
 
-    // clean up existing build directories
-    if base_dir.exists() {
-        let now = Local::now();
+                fs::read_dir(&base_dir)?
+                    .flat_map(Result::ok)
+                    .map(|entry| entry.path())
+                    .flat_map(|path| {
+                        let name = path.file_name()?.to_string_lossy().to_string();
+                        let date = Local.datetime_from_str(&name, DATE_FORMAT_STR).ok()?;
+                        Some((path, date))
+                    })
+                    .filter(|(_, date)| now.signed_duration_since(*date) > Duration::weeks(7))
+                    .for_each(|(path, _)| {
+                        eprintln!("Removing old directory: {:?}", path);
+                        if let Err(err) = fs::remove_dir_all(path) {
+                            eprintln!("  Failed to remove directory: {}", err);
+                        }
+                    });
+            }
 
-        fs::read_dir(&base_dir)?
-            .flat_map(Result::ok)
-            .map(|entry| entry.path())
-            .flat_map(|path| {
-                let name = path.file_name()?.to_string_lossy().to_string();
-                let date = Local.datetime_from_str(&name, DATE_FORMAT_STR).ok()?;
-                Some((path, date))
-            })
-            .filter(|(_, date)| now.signed_duration_since(*date) > Duration::weeks(7))
-            .for_each(|(path, _)| {
-                eprintln!("Removing old directory: {:?}", path);
-                if let Err(err) = fs::remove_dir_all(path) {
-                    eprintln!("  Failed to remove directory: {}", err);
-                }
-            });
-    }
+            let name = Local::now().format(DATE_FORMAT_STR).to_string();
+            base_dir.join(name)
+        }
+    };
 
     // create new directory
-    let path = base_dir.join(name);
     fs::create_dir_all(&path)?;
     Ok(path)
-
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -229,7 +230,7 @@ impl Status {
 }
 
 struct Args {
-    base_dir: Option<PathBuf>,
+    dir: Option<PathBuf>,
 
     apply_stash: bool,
     apply_index: bool,
@@ -249,14 +250,14 @@ impl Args {
             )
             (@arg shell_command: -c               "Run as shell command")
             (@arg verbose: -v --verbose           "Show output from commands")
-            (@arg base_dir: -d --dir [directory]  "Base directory for running code in")
+            (@arg dir: -d --dir [directory]  "Directory to check out and run code in")
             (@arg commits: [commits] ...          "List of commits to run on")
             (@arg command: <command> ... +last    "Command to execute")
         )
         .get_matches_safe()?;
 
         Ok(Args {
-            base_dir: matches.value_of("base_dir").map(PathBuf::from),
+            dir: matches.value_of("dir").map(PathBuf::from),
 
             apply_stash: matches.is_present("apply_stash"),
             apply_index: false,
