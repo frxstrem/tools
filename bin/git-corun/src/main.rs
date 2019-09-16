@@ -54,6 +54,7 @@ fn app(args: Args) -> Result<i32, Box<dyn Error>> {
 
     // create temporary directory (and possibly clean up old ones)
     let tmpdir = create_directory(&args)?;
+    eprintln!("Running in directory: {}", tmpdir.to_string_lossy());
 
     // git clone into temporary directory
     git::clone_local(&git_dir, &tmpdir)?;
