@@ -95,15 +95,11 @@ fn run_app_for(
     }
 
     // print commit
-    print_commit(&git_dir, &commit, Some(Status::Pending))?;
+    print_commit(&git_dir, &commit, Status::Pending)?;
 
     // run command in repo
     let exit_status = run_in(&args, args.command.iter().map(String::as_str), &work_tree)?;
-    let status = if exit_status.success() {
-        Status::Success
-    } else {
-        Status::Failure
-    };
+    let status = exit_status.into();
 
     // print status
     if !args.verbose {
@@ -112,7 +108,7 @@ fn run_app_for(
         write!(stdout, "\x1b[1F\x1b[K")?;
         stdout.flush()?;
     }
-    print_commit(&git_dir, &commit, Some(status))?;
+    print_commit(&git_dir, &commit, status)?;
 
     Ok(exit_status.code().unwrap_or(255))
 }
@@ -120,14 +116,10 @@ fn run_app_for(
 fn print_commit(
     git_dir: impl AsRef<Path>,
     commit: impl AsRef<str>,
-    status: Option<Status>,
+    status: Status,
 ) -> io::Result<()> {
     let base_format = "%C(yellow)%h %C(bold)%G? %Creset%C(cyan)[%Cgreen%ad%C(cyan) by %Cred%an%C(cyan)]%Creset %s";
-    let format = if let Some(status) = status {
-        format!("{} {}", status.get_format(), base_format)
-    } else {
-        format!("{}", base_format)
-    };
+    let format =format!("{} {}", status.get_format(), base_format);
 
     git::show_commit(git_dir, commit, &format)
 }
@@ -214,17 +206,53 @@ fn create_directory(args: &Args) -> io::Result<PathBuf> {
 
 #[derive(Copy, Clone, Debug)]
 enum Status {
+    /// Process is still running.
     Pending,
-    Success,
-    Failure,
+    /// Process exited with exit code 0.
+    Success(i32),
+    /// Process exited with exit code 1-124, 126 or 127.
+    Failure(i32),
+    /// Process exited with exit code 125.
+    Inconclusive(i32),
+    /// Process exited with any other exit code.
+    Abort(Option<i32>),
 }
 
 impl Status {
     fn get_format(self) -> impl Display {
-        match self {
-            Status::Pending => "%C(bold)%C(yellow)●%Creset",
-            Status::Success => "%C(bold)%C(green)✔%Creset",
-            Status::Failure => "%C(bold)%C(red)✘%Creset",
+        let prefix = match self {
+            Status::Pending => "%C(bold)%C(yellow)●",
+            Status::Success(_) => "%C(bold)%C(green)✔",
+            Status::Failure(_) => "%C(bold)%C(red)✘",
+            Status::Inconclusive(_) => "%C(bold)%C(blue)?",
+            Status::Abort(_) => "%C(bold)%C(red)!",
+        };
+
+        if let Some(code) = self.code() {
+            format!("{}{:>3}%Creset", prefix, (code & 0xff) as u8)
+        } else {
+            format!("{}   %Creset", prefix)
+        }
+    }
+
+    fn code(&self) -> Option<i32> {
+        match *self {
+            Status::Pending => None,
+            Status::Success(code) => Some(code),
+            Status::Failure(code) => Some(code),
+            Status::Inconclusive(code) => Some(code),
+            Status::Abort(code) => code,
+        }
+    }
+}
+
+impl From<ExitStatus> for Status {
+    fn from(exit_status: ExitStatus) -> Status {
+        match exit_status.code() {
+            Some(code @ 0) => Status::Success(code),
+            Some(code @ 1..=124) | Some(code @ 126) | Some(code @ 127) => Status::Failure(code),
+            Some(code @ 125) => Status::Inconclusive(code),
+            code => Status::Abort(code),
         }
     }
 }
