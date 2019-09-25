@@ -27,9 +27,28 @@ pub struct Message {
 }
 
 impl Message {
-    pub fn from_raw(text: impl AsRef<str>) -> Message {
+    pub fn from_raw(text: impl AsRef<str>, raw: bool) -> Message {
+        let text = text.as_ref().to_string();
+
+        if !raw {
+            // extract first field of line (before first space) and attempt to parse as date
+            let mut fields_iter = text.splitn(2, ' ');
+            let date_field = fields_iter.next();
+            let rest_field = fields_iter.next();
+
+            if let (Some(date), Some(rest)) = (date_field, rest_field) {
+                if let Ok(date) = DateTime::parse_from_rfc3339(date) {
+                    return Message {
+                        text: rest.to_string(),
+                        timestamp: Some(date.into()),
+                        ..Default::default()
+                    };
+                }
+            }
+        }
+
         Message {
-            text: text.as_ref().to_string(),
+            text,
             ..Default::default()
         }
     }

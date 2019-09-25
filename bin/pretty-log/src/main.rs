@@ -102,9 +102,9 @@ fn printer_loop<R: Read>(
     for line in reader.lines().map(Result::unwrap) {
         // try to parse line as JSON, or create standard message from raw line
         let mut message: Message = if raw {
-            Message::from_raw(line)
+            Message::from_raw(line, raw)
         } else {
-            serde_json::from_str(&line).unwrap_or_else(|_| Message::from_raw(line))
+            serde_json::from_str(&line).unwrap_or_else(|_| Message::from_raw(line, raw))
         };
 
         if let Some(request_id) = request_id {
