@@ -119,7 +119,7 @@ fn print_commit(
     status: Status,
 ) -> io::Result<()> {
     let base_format = "%C(yellow)%h %C(bold)%G? %Creset%C(cyan)[%Cgreen%ad%C(cyan) by %Cred%an%C(cyan)]%Creset %s";
-    let format =format!("{} {}", status.get_format(), base_format);
+    let format = format!("{} {}", status.get_format(), base_format);
 
     git::show_commit(git_dir, commit, &format)
 }
