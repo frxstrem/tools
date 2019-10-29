@@ -1,24 +1,49 @@
+use std::any::Any;
+use std::cell::RefCell;
+use std::marker::PhantomData;
+use std::ops::Deref;
 use std::thread::{self, JoinHandle};
 
 use futures::channel::oneshot::{channel, Sender};
 use futures::prelude::*;
 use tokio::runtime::current_thread::{Handle, Runtime, TaskExecutor};
 
-pub struct BackgroundRuntime {
+thread_local! {
+    static CONTEXT: RefCell<Option<Box<dyn Any>>> = RefCell::new(None);
+}
+
+pub struct BackgroundRuntime<C = ()>
+where
+    C: 'static + Send,
+{
     handle: Handle,
     close_handle: Sender<()>,
     join_handle: JoinHandle<()>,
+    _context: PhantomData<fn() -> C>,
 }
 
-impl BackgroundRuntime {
+impl BackgroundRuntime<> {
+    pub fn new() -> Result<BackgroundRuntime<>,SpawnError> {
+        BackgroundRuntime::new_with_context(())
+    }
+}
+
+impl<C> BackgroundRuntime<C>
+where
+    C: 'static + Send,
+{
     #[allow(unused_must_use)]
-    pub fn new() -> Result<BackgroundRuntime, SpawnError> {
+    pub fn new_with_context(context: C) -> Result<BackgroundRuntime<C>, SpawnError> {
         let (tx, rx) = crate::channel::oneshot::channel();
 
         let (close_handle, closed) = channel();
 
         // spawn background thread for tasks
         let join_handle = thread::spawn(move || {
+            CONTEXT.with(|cell| {
+                *cell.borrow_mut() = Some(Box::new(context));
+            });
+
             // create single-threaded runtime, and get handle to runtime
             let result = Runtime::new()
                 .map(|runtime| {
@@ -54,6 +79,7 @@ impl BackgroundRuntime {
             handle,
             close_handle,
             join_handle,
+            _context: PhantomData,
         })
     }
 
@@ -61,6 +87,22 @@ impl BackgroundRuntime {
     pub fn stop(self) -> () {
         self.close_handle.send(());
         self.join_handle.join().unwrap();
+    }
+
+    fn get_context() -> ContextRef<C> {
+        CONTEXT.with(|context| {
+            let context = context.borrow();
+            let context = context
+                .as_ref()
+                .map(Box::as_ref)
+                .and_then(Any::downcast_ref)
+                .unwrap();
+            unsafe {
+                ContextRef {
+                    data: &*(context as *const C),
+                }
+            }
+        })
     }
 
     pub fn spawn<F>(&self, future: F) -> Result<(), SpawnError>
@@ -72,11 +114,12 @@ impl BackgroundRuntime {
 
     pub fn spawn_with<F, G>(&self, func: G) -> Result<(), SpawnError>
     where
-        G: 'static + FnOnce() -> F + Send,
+        G: 'static + FnOnce(ContextRef<C>) -> F + Send,
         F: 'static + Future<Output = ()>,
     {
         self.spawn(async move {
-            let future = Box::pin(func());
+            let state = Self::get_context();
+            let future = Box::pin(func(state));
             TaskExecutor::current().spawn_local(future).unwrap();
         })
     }
@@ -94,7 +137,7 @@ impl BackgroundRuntime {
     #[allow(unused_must_use)]
     pub async fn run_with<F, G, T>(&self, func: G) -> Result<T, SpawnError>
     where
-        G: 'static + FnOnce() -> F + Send,
+        G: 'static + FnOnce(ContextRef<C>) -> F + Send,
         F: 'static + Future<Output = T>,
         T: 'static + Send,
     {
@@ -103,7 +146,8 @@ impl BackgroundRuntime {
         self.spawn(async move {
             let func = move || {
                 async move {
-                    let result = func().await;
+                    let context = Self::get_context();
+                    let result = func(context).await;
                     tx.send(result);
                 }
             };
@@ -112,6 +156,17 @@ impl BackgroundRuntime {
         })?;
 
         rx.await.map_err(SpawnError::from)
+    }
+}
+
+pub struct ContextRef<S> {
+    data: *const S,
+}
+
+impl<S> Deref for ContextRef<S> {
+    type Target = S;
+    fn deref(&self) -> &S {
+        unsafe { &*self.data }
     }
 }
 
@@ -146,7 +201,9 @@ mod test {
 
     #[test]
     pub fn background_runtime() {
-        let runtime = BackgroundRuntime::new().unwrap();
+        let context = 123;
+
+        let runtime = BackgroundRuntime::new_with_context(context).unwrap();
 
         let mut results: Vec<Arc<AtomicBool>> = Vec::new();
 
@@ -167,9 +224,12 @@ mod test {
             results.push(out.clone());
 
             runtime
-                .spawn_with(move || {
+                .spawn_with(move |ctx| {
                     async move {
                         delay_for(Duration::from_millis(400)).await;
+
+                        assert_eq!(&*ctx, &123);
+
                         out.store(true, Ordering::Relaxed);
                     }
                 })
