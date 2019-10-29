@@ -1,3 +1,5 @@
+#![allow(unused_macros)]
+
 use std::ffi::OsStr;
 use std::io;
 use std::process::Command;
@@ -42,6 +44,7 @@ macro_rules! gitc {
     ($($tt:tt)*) => { $crate::git::run::run_gitc(gitc_args!($($tt)*)) };
 }
 
+#[allow(dead_code)]
 pub fn run_gitc<S>(args: &[S]) -> io::Result<String>
 where
     S: AsRef<OsStr>,
