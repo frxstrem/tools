@@ -10,9 +10,5 @@ edition = "2018"
 serde = { version = "1.0.101", features = [ "derive" ] }
 serde_json = "1.0.41"
 bytes = "0.4.12"
-tokio = { version = "0.2.0-alpha.6", optional = true }
-futures-preview = { version = "0.3.0-alpha.19", optional = true, features = [ "async-await" ] }
-
-[features]
-default = [ "async-await" ]
-async-await = [ "tokio", "futures-preview" ]
+tokio = "0.2.0-alpha.6"
+futures-preview = { version = "0.3.0-alpha.19", features = [ "async-await" ] }
