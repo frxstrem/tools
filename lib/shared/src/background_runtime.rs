@@ -1,5 +1,9 @@
 use std::any::Any;
+use std::fmt::{self, Debug};
+use std::borrow::Borrow;
 use std::cell::RefCell;
+use std::cmp::Ordering;
+use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::thread::{self, JoinHandle};
@@ -12,6 +16,8 @@ thread_local! {
     static CONTEXT: RefCell<Option<Box<dyn Any>>> = RefCell::new(None);
 }
 
+/// Tokio-based single-threaded runtime that runs tasks in a single background
+/// thread.
 pub struct BackgroundRuntime<C = ()>
 where
     C: 'static + Send,
@@ -22,8 +28,9 @@ where
     _context: PhantomData<fn() -> C>,
 }
 
-impl BackgroundRuntime<> {
-    pub fn new() -> Result<BackgroundRuntime<>,SpawnError> {
+impl BackgroundRuntime {
+    /// Create a new `BackgroundRuntime` instance with an empty context, `()`.
+    pub fn new() -> Result<BackgroundRuntime, SpawnError> {
         BackgroundRuntime::new_with_context(())
     }
 }
@@ -32,10 +39,14 @@ impl<C> BackgroundRuntime<C>
 where
     C: 'static + Send,
 {
+    /// Create a new `BackgroundRuntime` instance with a context value.
     #[allow(unused_must_use)]
     pub fn new_with_context(context: C) -> Result<BackgroundRuntime<C>, SpawnError> {
+        // create a channel that will be used to send back the runtime handle
         let (tx, rx) = crate::channel::oneshot::channel();
 
+        // create a future and handle that can be used to force the background thread to
+        // stop as soon as it is idle
         let (close_handle, closed) = channel();
 
         // spawn background thread for tasks
@@ -62,7 +73,10 @@ where
 
             tx.send(Ok(handle));
 
+            // run tasks on the runtime until all spawned tasks are complete
+            // and `close_handle` has been used or dropped
             runtime.spawn(async {
+                // ignore result
                 closed.await;
             });
             runtime.run();
@@ -83,12 +97,19 @@ where
         })
     }
 
+    /// Run all tasks on the runtime to completion, and then stop the background thread.
     #[allow(unused_must_use)]
     pub fn stop(self) -> () {
         self.close_handle.send(());
         self.join_handle.join().unwrap();
     }
 
+    /// Get the runtime context for the current thread.
+    ///
+    /// ## Panics
+    ///
+    /// This function will panic if called from outside a background thread
+    /// belonging to a `BackgroundRuntime`.
     fn get_context() -> ContextRef<C> {
         CONTEXT.with(|context| {
             let context = context.borrow();
@@ -98,6 +119,9 @@ where
                 .and_then(Any::downcast_ref)
                 .unwrap();
             unsafe {
+                // NOTE: this is safe because `ContextRef` cannot be shared
+                // across threads, and so it cannot outlive the thread local
+                // storage
                 ContextRef {
                     data: &*(context as *const C),
                 }
@@ -105,6 +129,7 @@ where
         })
     }
 
+    /// Spawn a future onto the background thread runtime.
     pub fn spawn<F>(&self, future: F) -> Result<(), SpawnError>
     where
         F: 'static + Future<Output = ()> + Send,
@@ -112,6 +137,14 @@ where
         self.handle.spawn(future).map_err(SpawnError::from)
     }
 
+    /// Spawn a future from a function onto the background thread runtime.
+    ///
+    /// This method can be used to spawn futures on the background thread, even
+    /// if the future is not `Send`, as long as `func` is `Send`.
+    ///
+    /// The function will be given a `ContextRef` value referencing the runtime
+    /// context, which can be used to persist local thread storage across futures
+    /// in the background thread.
     pub fn spawn_with<F, G>(&self, func: G) -> Result<(), SpawnError>
     where
         G: 'static + FnOnce(ContextRef<C>) -> F + Send,
@@ -124,6 +157,9 @@ where
         })
     }
 
+    /// Spawn a future from a function onto the background thread runtime, and
+    /// return a new future that is resolved when the future on the background
+    /// thread has completed.
     pub async fn run<F, T>(&self, future: F) -> Result<T, SpawnError>
     where
         F: 'static + Future<Output = T> + Send,
@@ -134,6 +170,16 @@ where
         Ok(remote.await)
     }
 
+    /// Spawn a future from a function onto the background thread runtime, and
+    /// return a new future that is resolved when the future on the background
+    /// thread has completed.
+    ///
+    /// This method can be used to spawn futures on the background thread, even
+    /// if the future is not `Send`, as long as `func` is `Send`.
+    ///
+    /// The function will be given a `ContextRef` value referencing the runtime
+    /// context, which can be used to persist local thread storage across futures
+    /// in the background thread.
     #[allow(unused_must_use)]
     pub async fn run_with<F, G, T>(&self, func: G) -> Result<T, SpawnError>
     where
@@ -159,17 +205,97 @@ where
     }
 }
 
-pub struct ContextRef<S> {
-    data: *const S,
+/// Reference to a [`BackgroundRuntime`](struct.BackgroundRuntime.html)'s context.
+///
+/// `ContextRef` does not implement `Send` or `Sync`, so it can only be used from
+/// within the background thread of a `BackgroundRuntime`.
+#[derive(Clone)]
+pub struct ContextRef<C> {
+    // NOTE: `data` is a pointer here because that forces `ContextRef` to be
+    //       neither `Send` nor `Sync`
+    data: *const C,
 }
 
-impl<S> Deref for ContextRef<S> {
-    type Target = S;
-    fn deref(&self) -> &S {
+impl<C> Debug for ContextRef<C> where for<'a> &'a C : Debug {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("ContextRef")
+            .field("data", &self.deref())
+            .finish()
+    }
+}
+
+impl<C> Deref for ContextRef<C> {
+    type Target = C;
+    fn deref(&self) -> &C {
         unsafe { &*self.data }
     }
 }
 
+impl<C> AsRef<C> for ContextRef<C> {
+    fn as_ref(&self) -> &C {
+        &*self
+    }
+}
+
+impl<C> Borrow<C> for ContextRef<C> {
+    fn borrow(&self) -> &C {
+        &*self
+    }
+}
+
+impl<C> PartialEq<Self> for ContextRef<C>
+where
+    for<'a> &'a C: PartialEq<&'a C>,
+{
+    fn eq(&self, other: &Self) -> bool {
+        <&C>::eq(&self.deref(), &other.deref())
+    }
+}
+
+impl<C> Eq for ContextRef<C> where for<'a> &'a C: Eq {}
+
+impl<C> PartialOrd<Self> for ContextRef<C>
+where
+    for<'a> &'a C: PartialOrd<&'a C>,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        <&'_ C>::partial_cmp(&self.deref(), &other.deref())
+    }
+
+    fn lt(&self, other: &Self) -> bool {
+        <&'_ C>::lt(&self.deref(), &other.deref())
+    }
+
+    fn le(&self, other: &Self) -> bool {
+        <&'_ C>::le(&self.deref(), &other.deref())
+    }
+
+    fn gt(&self, other: &Self) -> bool {
+        <&'_ C>::gt(&self.deref(), &other.deref())
+    }
+
+    fn ge(&self, other: &Self) -> bool {
+        <&'_ C>::ge(&self.deref(), &other.deref())
+    }
+}
+
+impl<C> Ord for ContextRef<C>
+where
+    for<'a> &'a C: Ord,
+{
+    fn cmp(&self, other: &Self) -> Ordering {
+        <&'_ C>::cmp(&self.deref(), &other.deref())
+    }
+}
+
+impl<C> Hash for ContextRef<C> where for<'a> &'a C: Hash {
+    fn hash<H>(&self, state: &mut H) where H : Hasher {
+        self.deref().hash(state)
+    }
+}
+
+/// Error occurred during spawning of a task on the `BackgroundRuntime`'s
+/// background thread.
 #[derive(Debug)]
 pub enum SpawnError {
     BackgroundThreadNotStarted,
