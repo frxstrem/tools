@@ -1,3 +1,6 @@
+#[macro_use]
+pub mod macros;
+
 pub mod background_runtime;
 pub mod git;
 pub mod git_old;
