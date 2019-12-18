@@ -1,7 +1,5 @@
 use std::any::Any;
-use std::any::TypeId;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -13,15 +11,13 @@ use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::{self, LocalSet};
 
+use crate::type_map::TypeMap;
+
 type AnyError = Box<dyn std::error::Error>;
 
 enum Event {
     Task(Box<dyn FnOnce() -> task::JoinHandle<()> + Send>),
     SetContext(Box<dyn FnOnce() -> Box<dyn Any> + Send>),
-}
-
-thread_local! {
-    static CONTEXT_MAP: RefCell<HashMap<TypeId, Rc<dyn Any>>> = RefCell::new(HashMap::new());
 }
 
 pub struct BackgroundRuntime {
@@ -39,6 +35,10 @@ impl BackgroundRuntime {
             let mut rt = Runtime::new().unwrap();
             let local = LocalSet::new();
 
+            CONTEXT_MAP.with(|map| {
+                *map.borrow_mut() = Some(TypeMap::new());
+            });
+
             local.block_on(&mut rt, async move {
                 let mut task_handles = Vec::new();
 
@@ -49,8 +49,11 @@ impl BackgroundRuntime {
                             task_handles.push(handle);
                         }
                         Event::SetContext(func) => {
-                            let ctx: Rc<dyn Any> = func().into();
-                            add_context(ctx);
+                            CONTEXT_MAP.with(|map| {
+                                let mut map = map.borrow_mut();
+                                let map = map.as_mut().unwrap();
+                                map.insert_any(func())
+                            });
                         }
                     }
                 }
@@ -70,8 +73,10 @@ impl BackgroundRuntime {
     where
         T: Any + Send + 'static,
     {
-        self.sender
-            .send(Event::SetContext(Box::new(move || Box::new(value)))); // TODO: handle error
+        // ignore errors
+        let _ = self
+            .sender
+            .send(Event::SetContext(Box::new(move || Box::new(value))));
     }
 
     pub fn add_context_with<G, T>(&self, func: G)
@@ -79,8 +84,10 @@ impl BackgroundRuntime {
         G: FnOnce() -> T + Send + 'static,
         T: Any + Send + 'static,
     {
-        self.sender
-            .send(Event::SetContext(Box::new(move || Box::new(func())))); // TODO: handle error
+        // ignore errors
+        let _ = self
+            .sender
+            .send(Event::SetContext(Box::new(move || Box::new(func()))));
     }
 
     pub fn finish(self) -> Result<(), AnyError> {
@@ -108,30 +115,28 @@ impl BackgroundRuntime {
         let func: Box<dyn FnOnce() -> task::JoinHandle<()> + Send> = Box::new(move || {
             task::spawn_local(async move {
                 let result = func().await;
-                sender.send(result); // TODO: handle error
+                let _ = sender.send(result);
             })
         });
 
-        self.sender.send(Event::Task(func)); // TODO: handle error
+        let _ = self.sender.send(Event::Task(func));
 
         JoinHandle { receiver }
     }
 }
 
-pub fn get_context<T: Any>() -> Option<Rc<T>> {
-    CONTEXT_MAP.with(|map| {
-        map.borrow()
-            .get(&TypeId::of::<T>())
-            .map(Rc::clone)
-            .map(Rc::downcast::<T>)
-            .and_then(Result::ok)
-    })
+thread_local! {
+    static CONTEXT_MAP: RefCell<Option<TypeMap>> = RefCell::new(None);
 }
 
-fn add_context(value: Rc<dyn Any>) {
+pub fn get_context<T: Any>() -> Option<Rc<T>> {
     CONTEXT_MAP.with(|map| {
-        map.borrow_mut().insert(value.as_ref().type_id(), value);
-    });
+        let map = map.borrow();
+        let map = map
+            .as_ref()
+            .expect("Calling get_context outside of BackgroundRuntime");
+        map.get::<T>()
+    })
 }
 
 pub struct JoinHandle<T> {
@@ -190,6 +195,12 @@ mod test {
 
         runtime.finish().unwrap();
 
-        assert_eq!(true, future::join_all(results).await.into_iter().all(|x| x.unwrap_or(false)));
+        assert_eq!(
+            true,
+            future::join_all(results)
+                .await
+                .into_iter()
+                .all(|x| x.unwrap_or(false))
+        );
     }
 }
