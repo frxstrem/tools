@@ -1,5 +1,5 @@
 use crate::error::*;
-use crate::luxa::*;
+use luxa_core::luxa::*;
 
 macro_rules! modes {
     ($(
