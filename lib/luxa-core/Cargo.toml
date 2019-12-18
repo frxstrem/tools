@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 hidapi = "1.0.1"
+async-trait = "0.1.21"

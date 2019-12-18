@@ -1,8 +1,11 @@
+use async_trait::async_trait;
+
 use crate::error::*;
 
+#[async_trait(?Send)]
 pub trait Luxafor {
-    fn solid(&self, color: Color) -> Result<(), LuxaError>;
-    fn fade(&self, color: Color, duration: u8) -> Result<(), LuxaError>;
+    async fn solid(&self, color: Color) -> Result<(), LuxaError>;
+    async fn fade(&self, color: Color, duration: u8) -> Result<(), LuxaError>;
 }
 
 #[derive(Debug, Copy, Clone)]

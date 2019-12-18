@@ -1,3 +1,5 @@
+use async_trait::async_trait;
+
 use crate::error::*;
 use crate::luxa::*;
 
@@ -31,13 +33,14 @@ impl LuxaforHid {
     }
 }
 
+#[async_trait(?Send)]
 impl Luxafor for LuxaforHid {
-    fn solid(&self, color: Color) -> Result<(), LuxaError> {
+    async fn solid(&self, color: Color) -> Result<(), LuxaError> {
         let (r, g, b) = color.to_rgb();
         self.write(&[1, Leds::All as u8, r, g, b])
     }
 
-    fn fade(&self, color: Color, duration: u8) -> Result<(), LuxaError> {
+    async fn fade(&self, color: Color, duration: u8) -> Result<(), LuxaError> {
         let (r, g, b) = color.to_rgb();
         self.write(&[2, Leds::All as u8, r, g, b, duration])
     }

@@ -9,3 +9,4 @@ edition = "2018"
 [dependencies]
 luxa-core = { path = "../../lib/luxa-core" }
 clap = "2.33.0"
+tokio = { version = "0.2.4", features = [ "macros" ] }

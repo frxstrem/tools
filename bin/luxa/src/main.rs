@@ -1,11 +1,12 @@
 mod modes;
 
 use clap::clap_app;
-use luxa_core::{error, hid::LuxaforHid};
+use luxa_core::{error::LuxaError, hid::LuxaforHid};
 
 use std::process::exit;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let args = clap_app!(luxa =>
         (@arg mode: [mode])
     )
@@ -21,8 +22,11 @@ fn main() {
 
         match mode {
             Some(mode) => {
-                let result =
-                    LuxaforHid::open_default().and_then(move |device| mode.run(&device));
+                let result = async move {
+                    let device = LuxaforHid::open_default()?;
+                    mode.run(&device).await?;
+                    Ok::<_, LuxaError>(())
+                }.await;
 
                 if let Err(err) = result {
                     eprintln!("Error: {}", err);
