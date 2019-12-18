@@ -1,17 +1,32 @@
 mod modes;
 
 use clap::clap_app;
-use luxa_core::{error::LuxaError, hid::LuxaforHid};
+use luxa_core::prelude::*;
 
 use std::process::exit;
 
 #[tokio::main]
 async fn main() {
+    let device = match LuxaforHid::open_default() {
+        Ok(device) => device,
+        Err(err) => {
+            eprintln!("Error: {}", err);
+            exit(1);
+        }
+    };
+
     let args = clap_app!(luxa =>
         (@arg mode: [mode])
     )
     .get_matches();
 
+    if let Err(err) = run(&device, &args).await {
+        eprintln!("Error: {}", err);
+        exit(1);
+    }
+}
+
+async fn run<'a, L: Luxafor>(device: &L, args: &clap::ArgMatches<'a>) -> Result<(), LuxaError> {
     let all_modes = modes::get_all_modes();
 
     if let Some(mode_name) = args.value_of("mode") {
@@ -22,18 +37,10 @@ async fn main() {
 
         match mode {
             Some(mode) => {
-                let result = async move {
-                    let device = LuxaforHid::open_default()?;
-                    mode.run(&device).await?;
-                    Ok::<_, LuxaError>(())
-                }.await;
-
-                if let Err(err) = result {
-                    eprintln!("Error: {}", err);
-                    exit(1);
-                }
+                mode.run(device).await?;
             }
             None => {
+                // TODO: use error
                 eprintln!("Error: Unknown mode {:?}", mode_name);
                 exit(2);
             }
@@ -45,4 +52,6 @@ async fn main() {
             println!(" - {}", names);
         }
     }
+
+    Ok(())
 }

@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 
 use crate::error::*;
 
@@ -8,12 +9,7 @@ pub trait Luxafor {
     async fn fade(&self, color: Color, duration: u8) -> Result<(), LuxaError>;
 }
 
-#[derive(Debug, Copy, Clone)]
-pub enum Leds {
-    All = 0xff,
-}
-
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub enum Color {
     Rgb(u8, u8, u8),
 }

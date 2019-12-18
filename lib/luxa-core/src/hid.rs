@@ -45,3 +45,7 @@ impl Luxafor for LuxaforHid {
         self.write(&[2, Leds::All as u8, r, g, b, duration])
     }
 }
+
+enum Leds {
+    All = 0xff,
+}

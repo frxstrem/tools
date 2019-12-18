@@ -11,19 +11,14 @@ pub struct RemoteHandle<T: RemoteTransport> {
 #[async_trait(?Send)]
 impl<T: RemoteTransport> Luxafor for RemoteHandle<T> {
     async fn solid(&self, color: Color) -> Result<(), LuxaError> {
-        let response = self.transport.send(Request::Solid(color)).await?;
-
-        match response {
-            Response::Ok => Ok(()),
-        }
+        self.transport.send(Request::Solid(color)).await?.ok()
     }
 
     async fn fade(&self, color: Color, duration: u8) -> Result<(), LuxaError> {
-        let response = self.transport.send(Request::Fade(color, duration)).await?;
-
-        match response {
-            Response::Ok => Ok(()),
-        }
+        self.transport
+            .send(Request::Fade(color, duration))
+            .await?
+            .ok()
     }
 }
 
@@ -47,11 +42,23 @@ pub trait RemoteTransport {
     async fn send(&self, request: Request) -> Result<Response, LuxaError>;
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub enum Request {
     Solid(Color),
     Fade(Color, u8),
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub enum Response {
     Ok,
+    Err(LuxaError),
+}
+
+impl Response {
+    pub fn ok(self) -> Result<(), LuxaError> {
+        match self {
+            Response::Ok => Ok(()),
+            Response::Err(err) => Err(err),
+        }
+    }
 }

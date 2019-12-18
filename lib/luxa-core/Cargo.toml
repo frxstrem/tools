@@ -7,5 +7,11 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-hidapi = "1.0.1"
+shared = { path = "../shared" }
+hidapi = { version = "1.0.1", optional = true }
 async-trait = "0.1.21"
+serde = { version = "1.0.103", features = [ "derive" ] }
+tokio = "0.2.4"
+
+[features]
+hid = [ "hidapi" ]
