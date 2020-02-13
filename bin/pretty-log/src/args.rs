@@ -13,6 +13,7 @@ pub struct Args {
     pub severity_range: SeverityRange,
 
     pub raw: bool,
+    pub golang: bool,
 
     pub show_context: bool,
     pub show_source: bool,
@@ -54,6 +55,8 @@ impl Args {
 
             (@arg raw: -Z --raw
                 "Do not parse JSON")
+            (@arg golang: --go
+                "Parse Go log messages")
 
             (@arg context: -x --context
                 "Show context data for logs")
@@ -130,6 +133,7 @@ impl Args {
             severity_range: (min_level, max_level),
 
             raw: matches.is_present("raw"),
+            golang: matches.is_present("golang"),
 
             show_context: matches.is_present("context"),
             show_source: matches.is_present("source"),

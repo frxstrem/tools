@@ -18,6 +18,9 @@ use message::{Message, Severity};
 mod printer;
 use printer::MessagePrinter;
 
+mod parser;
+use parser::MessageParser;
+
 use regex::{Captures, Regex};
 
 fn main() {
@@ -33,6 +36,7 @@ fn main() {
 fn app_main() -> Result<i32, Box<dyn Error>> {
     let args = Args::parse();
 
+    let parser = get_parser(&args);
     let printer = get_printer(&args);
 
     let grep = args
@@ -47,6 +51,7 @@ fn app_main() -> Result<i32, Box<dyn Error>> {
             let cmd_args = &cmd[1..];
 
             let exit_status = run_command(
+                parser.into(),
                 printer.into(),
                 &command,
                 cmd_args,
@@ -61,6 +66,7 @@ fn app_main() -> Result<i32, Box<dyn Error>> {
             // read line by line from standard input
             printer_loop(
                 io::stdin(),
+                parser.as_ref(),
                 printer.as_ref(),
                 Severity::Default,
                 args.severity_range,
@@ -70,6 +76,16 @@ fn app_main() -> Result<i32, Box<dyn Error>> {
             );
             Ok(0)
         }
+    }
+}
+
+fn get_parser(args: &Args) -> Box<dyn MessageParser> {
+    if args.golang {
+        Box::new(parser::GolangLogParser)
+    } else if args.raw {
+        Box::new(parser::RawParser)
+    } else {
+        Box::new(parser::JsonParser)
     }
 }
 
@@ -91,6 +107,7 @@ fn auto_color() -> bool {
 
 fn printer_loop<R: Read>(
     reader: R,
+    parser: &dyn MessageParser,
     printer: &dyn MessagePrinter,
     default_severity: Severity,
     severity_range: SeverityRange,
@@ -100,12 +117,12 @@ fn printer_loop<R: Read>(
 ) {
     let reader = BufReader::new(reader);
     for line in reader.lines().map(Result::unwrap) {
-        // try to parse line as JSON, or create standard message from raw line
-        let mut message: Message = if raw {
+        let mut message: Message = parser.parse(&line).unwrap_or_else(|err| {
+            eprintln!("===");
+            eprintln!("{}", err);
+            eprintln!("===");
             Message::from_raw(line, raw)
-        } else {
-            serde_json::from_str(&line).unwrap_or_else(|_| Message::from_raw(line, raw))
-        };
+        });
 
         if let Some(request_id) = request_id {
             match message.request_id() {
@@ -149,6 +166,7 @@ fn printer_loop<R: Read>(
 }
 
 fn run_command(
+    parser: Arc<dyn MessageParser>,
     printer: Arc<dyn MessagePrinter>,
     command: &str,
     cmd_args: &[String],
@@ -171,6 +189,7 @@ fn run_command(
         s.spawn(|_| {
             printer_loop(
                 stdout,
+                parser.as_ref(),
                 printer.as_ref(),
                 Severity::Default,
                 severity_range,
@@ -183,6 +202,7 @@ fn run_command(
         s.spawn(|_| {
             printer_loop(
                 stderr,
+                parser.as_ref(),
                 printer.as_ref(),
                 Severity::Error,
                 severity_range,

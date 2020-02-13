@@ -8,3 +8,16 @@ macro_rules! libc_result {
         }
     }};
 }
+
+macro_rules! regex {
+    ($pattern:literal) => {{
+        use ::lazy_static::lazy_static;
+        use ::regex::Regex;
+
+        lazy_static! {
+            static ref RE: Regex = Regex::new($pattern).unwrap();
+        }
+
+        &RE as &Regex
+    }};
+}

@@ -8,22 +8,22 @@ use serde::{de, Deserialize, Deserializer};
 pub struct Message {
     /// Text content of log message.
     #[serde(rename = "message")]
-    text: String,
+    pub text: String,
 
     /// Log message severity.
-    severity: Option<Severity>,
+    pub severity: Option<Severity>,
 
     /// Timestamp of log message (in local time).
     #[serde(alias = "time", default, deserialize_with = "parse_datetime")]
-    timestamp: Option<DateTime<Local>>,
+    pub timestamp: Option<DateTime<Local>>,
 
     /// Originating location of message in source code.
     #[serde(rename = "sourceLocation", alias = "src")]
-    source_location: Option<SourceLocation>,
+    pub source_location: Option<SourceLocation>,
 
     /// Arbitrary context data
     #[serde(default)]
-    context: HashMap<String, String>,
+    pub context: HashMap<String, String>,
 }
 
 impl Message {
@@ -188,6 +188,8 @@ impl<'de> Deserialize<'de> for Severity {
 #[derive(Clone, Debug, Deserialize)]
 pub struct SourceLocation {
     file: Option<String>,
+
+    package: Option<String>,
 
     #[serde(default, deserialize_with = "parse_usize_opt")]
     line: Option<usize>,
