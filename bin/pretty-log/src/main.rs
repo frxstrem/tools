@@ -117,10 +117,7 @@ fn printer_loop<R: Read>(
 ) {
     let reader = BufReader::new(reader);
     for line in reader.lines().map(Result::unwrap) {
-        let mut message: Message = parser.parse(&line).unwrap_or_else(|err| {
-            eprintln!("===");
-            eprintln!("{}", err);
-            eprintln!("===");
+        let mut message: Message = parser.parse(&line).unwrap_or_else(|_err| {
             Message::from_raw(line, raw)
         });
 
