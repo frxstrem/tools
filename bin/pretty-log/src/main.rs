@@ -1,179 +1,111 @@
-use crossbeam::scope;
-use std::error::Error;
-use std::io::{self, BufRead, BufReader, Read};
-use std::process::{Command, ExitStatus, Stdio};
-use std::sync::Arc;
-
-mod args;
-use args::{Args, SeverityRange};
-
-#[macro_use]
-mod macros;
-
 mod ext;
-
+mod format;
 mod message;
-use message::{Message, Severity};
+mod utils;
 
-mod printer;
-use printer::MessagePrinter;
+use crossbeam::scope;
+use std::ffi::OsStr;
+use std::io::{self, BufRead, BufReader, Read, Write};
+use std::process::{Command, ExitStatus, Stdio};
+use std::sync::Mutex;
+use structopt::StructOpt;
+// use std::
 
-mod parser;
-use parser::MessageParser;
+use crate::format::{style::*, InputFormat, OutputFormat};
+use crate::message::{Message, Severity};
+use crate::utils::is_stdout_tty;
 
-use regex::{Captures, Regex};
+#[derive(Debug, StructOpt)]
+struct Options {
+    #[structopt(short = "i", long = "input", possible_values = format::get_input_format_variants(), default_value = format::get_input_format_default())]
+    input_format: String,
 
-fn main() {
-    match app_main() {
-        Ok(exit_code) => std::process::exit(exit_code),
-        Err(err) => {
-            println!("Error: {}", err);
-            std::process::exit(1);
-        }
-    }
+    #[structopt(short = "o", long = "output", possible_values = format::get_output_format_variants(), default_value = format::get_output_format_default())]
+    output_format: String,
+
+    #[structopt(subcommand)]
+    subcommand: Option<Subcommand>,
 }
 
-fn app_main() -> Result<i32, Box<dyn Error>> {
-    let args = Args::parse();
+#[derive(Debug, StructOpt)]
+enum Subcommand {
+    #[structopt(external_subcommand)]
+    External(Vec<String>),
+}
 
-    let parser = get_parser(&args);
-    let printer = get_printer(&args);
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let opts = Options::from_args();
 
-    let grep = args
-        .grep
-        .as_ref()
-        .map(|pattern| Regex::new(pattern).unwrap())
-        .map(|regex| (regex, args.grep_show_all));
+    let writer = io::stdout();
+    let style: AnyStyle = if is_stdout_tty() {
+        ColoredStyle.into()
+    } else {
+        PlainStyle.into()
+    };
 
-    match args.command {
-        Some(cmd) => {
-            let command = &cmd[0];
-            let cmd_args = &cmd[1..];
+    let input_format = format::get_input_format(&opts.input_format)
+        .ok_or_else(|| format!("Unknown input format: {:?}", &opts.input_format))?;
 
-            let exit_status = run_command(
-                parser.into(),
-                printer.into(),
-                &command,
-                cmd_args,
-                args.severity_range,
-                grep,
-                args.request_id.as_ref().map(String::as_str),
-                args.raw,
-            )?;
-            Ok(exit_status.code().unwrap_or(255))
+    let output_format = format::get_output_format(&opts.output_format, style)
+        .ok_or_else(|| format!("Unknown output format: {:?}", &opts.output_format))?;
+
+    match opts.subcommand.as_ref() {
+        Some(Subcommand::External(args)) => {
+            run_command(writer, input_format, output_format, args)?;
         }
         None => {
-            // read line by line from standard input
-            printer_loop(
+            run(
                 io::stdin(),
-                parser.as_ref(),
-                printer.as_ref(),
+                &Mutex::new(writer),
+                input_format,
+                output_format,
                 Severity::Default,
-                args.severity_range,
-                grep.as_ref(),
-                args.request_id.as_ref().map(String::as_str),
-                args.raw,
-            );
-            Ok(0)
+            )?;
         }
     }
+
+    Ok(())
 }
 
-fn get_parser(args: &Args) -> Box<dyn MessageParser> {
-    if args.golang {
-        Box::new(parser::GolangLogParser)
-    } else if args.raw {
-        Box::new(parser::RawParser)
-    } else {
-        Box::new(parser::JsonParser)
-    }
-}
-
-fn get_printer(args: &Args) -> Box<dyn MessagePrinter> {
-    let plain = args.plain;
-    let colored = args.colored.unwrap_or_else(auto_color);
-
-    match (plain, colored) {
-        (true, true) => Box::new(printer::PlainPrinter::<printer::ColorStyling>::default()),
-        (true, false) => Box::new(printer::PlainPrinter::<printer::NoColorStyling>::default()),
-        (false, true) => Box::new(printer::FancyPrinter::<printer::ColorStyling>::new(args)),
-        (false, false) => Box::new(printer::FancyPrinter::<printer::NoColorStyling>::new(args)),
-    }
-}
-
-fn auto_color() -> bool {
-    unsafe { libc_result!(libc::isatty(1)).unwrap() > 0 }
-}
-
-fn printer_loop<R: Read>(
-    reader: R,
-    parser: &dyn MessageParser,
-    printer: &dyn MessagePrinter,
+fn run(
+    reader: impl Read,
+    writer: &Mutex<impl Write>,
+    input: impl InputFormat,
+    output: impl OutputFormat,
     default_severity: Severity,
-    severity_range: SeverityRange,
-    grep: Option<&(Regex, bool)>,
-    request_id: Option<&str>,
-    raw: bool,
-) {
-    let reader = BufReader::new(reader);
-    for line in reader.lines().map(Result::unwrap) {
-        let mut message: Message = parser.parse(&line).unwrap_or_else(|_err| {
-            Message::from_raw(line, raw)
-        });
+) -> io::Result<()> {
+    let mut reader = BufReader::new(reader);
 
-        if let Some(request_id) = request_id {
-            match message.request_id() {
-                Some(message_request_id) => {
-                    if message_request_id != request_id {
-                        continue;
-                    }
-                }
-                None => continue,
-            }
+    let mut line = String::new();
+    while {
+        line.clear();
+        reader.read_line(&mut line)? > 0
+    } {
+        let line = line.trim_end_matches('\n');
+
+        let message = input
+            .parse_message(line, default_severity)
+            .unwrap_or_else(|| Message::from_text(line, default_severity));
+
+        if message.is_empty() {
+            continue;
         }
 
-        if let Some((grep, show_all)) = grep.as_ref() {
-            if !show_all && !grep.is_match(message.text()) {
-                continue;
-            }
-
-            let text = grep
-                .replace_all(message.text(), |captures: &Captures| {
-                    printer.emphasize(captures.get(0).unwrap().as_str())
-                })
-                .into_owned();
-            message.set_text(&text);
-        }
-
-        message.set_default_severity(default_severity);
-
-        if let Some(min_severity) = severity_range.0 {
-            if message.severity() < min_severity {
-                continue;
-            }
-        }
-        if let Some(max_severity) = severity_range.1 {
-            if message.severity() > max_severity {
-                continue;
-            }
-        }
-
-        printer.print(&message);
+        let writer = &mut *writer.lock().unwrap();
+        output.print_message(writer, &message)?;
     }
+
+    Ok(())
 }
 
 fn run_command(
-    parser: Arc<dyn MessageParser>,
-    printer: Arc<dyn MessagePrinter>,
-    command: &str,
-    cmd_args: &[String],
-    severity_range: SeverityRange,
-    grep: Option<(Regex, bool)>,
-    request_id: Option<&str>,
-    raw: bool,
-) -> Result<ExitStatus, Box<dyn Error>> {
-    let mut child = Command::new(command)
-        .args(cmd_args)
+    writer: impl Write + Send + Sync,
+    input: impl InputFormat,
+    output: impl OutputFormat,
+    command: &[impl AsRef<OsStr>],
+) -> io::Result<ExitStatus> {
+    let mut child = Command::new(&command[0])
+        .args(&command[1..])
         .stdin(Stdio::inherit())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -182,33 +114,11 @@ fn run_command(
     let stdout = child.stdout.take().expect("take stdout");
     let stderr = child.stderr.take().expect("take stderr");
 
+    let writer = Mutex::new(writer);
+
     scope(|s| {
-        s.spawn(|_| {
-            printer_loop(
-                stdout,
-                parser.as_ref(),
-                printer.as_ref(),
-                Severity::Default,
-                severity_range,
-                grep.as_ref(),
-                request_id,
-                raw,
-            )
-        });
-
-        s.spawn(|_| {
-            printer_loop(
-                stderr,
-                parser.as_ref(),
-                printer.as_ref(),
-                Severity::Error,
-                severity_range,
-                grep.as_ref(),
-                request_id,
-                raw,
-            )
-        });
-
+        s.spawn(|_| run(stdout, &writer, &input, &output, Severity::Info));
+        s.spawn(|_| run(stderr, &writer, &input, &output, Severity::Error));
         child.wait()
     })
     .unwrap()
