@@ -1,9 +1,9 @@
 use chrono::{DateTime, Local, TimeZone};
-use std::collections::HashMap;
 use serde::{
     de::{self, Deserializer},
     Deserialize,
 };
+use std::collections::HashMap;
 
 use super::{text::TextFormat, InputFormat};
 use crate::message::{Message, Severity};

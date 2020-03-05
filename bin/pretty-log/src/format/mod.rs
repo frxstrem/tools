@@ -6,9 +6,9 @@ mod text;
 
 use std::io::{self, Write};
 
-use crate::DisplayOptions;
 use self::style::Style;
 use crate::message::{Message, Severity};
+use crate::DisplayOptions;
 
 macro_rules! format_select {
     (

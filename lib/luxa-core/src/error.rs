@@ -21,7 +21,6 @@ impl Display for LuxaError {
 
 impl Error for LuxaError {}
 
-
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum LuxaHidError {
@@ -30,7 +29,10 @@ pub enum LuxaHidError {
 
     #[cfg(feature = "hid")]
     #[doc(hidden)]
-    #[serde(serialize_with = "shared::serde::string::serialize", skip_deserializing)]
+    #[serde(
+        serialize_with = "shared::serde::string::serialize",
+        skip_deserializing
+    )]
     Raw(hidapi::HidError),
 }
 

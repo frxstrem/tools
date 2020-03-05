@@ -57,7 +57,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let input_format = format::get_input_format(&opts.input_format)?;
 
-    let output_format = format::get_output_format(&opts.output_format, style, &opts.display_options)?;
+    let output_format =
+        format::get_output_format(&opts.output_format, style, &opts.display_options)?;
 
     match opts.subcommand.as_ref() {
         Some(Subcommand::External(args)) => {
