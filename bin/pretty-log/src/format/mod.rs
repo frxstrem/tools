@@ -1,3 +1,4 @@
+mod go;
 mod json;
 mod pretty;
 pub mod style;
@@ -53,10 +54,11 @@ format_select! {
     variants_fn = get_input_format_variants;
     default_fn = get_input_format_default;
     type = dyn InputFormat;
-    default = "json";
+    default = "json,go";
 
     "json" => json::JsonFormat::new(text::TextFormat::new()),
     "text" => text::TextFormat::new(),
+    "go" => go::GoFormat::new(text::TextFormat::new()),
 }
 
 format_select! {
