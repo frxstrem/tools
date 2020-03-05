@@ -35,29 +35,31 @@ impl OutputFormat for PrettyFormat {
         for (lineno, line) in lines.into_iter().enumerate() {
             let is_first = lineno == 0;
 
-            // print prefix fields
-            self.style.severity(writer, message.severity)?;
-            self.style.weak(writer)?;
+            if !self.opts.compact {
+                // print prefix fields
+                self.style.severity(writer, message.severity)?;
+                self.style.weak(writer)?;
 
-            if let Some(timestamp) = message.time.as_ref().and_if(|| is_first) {
-                print!("{}", timestamp.format("%Y-%m-%dT%H:%M:%S%.3f%:z"));
-            } else {
-                print!("{:29}", "");
+                if let Some(timestamp) = message.time.as_ref().and_if(|| is_first) {
+                    print!("{}", timestamp.format("%Y-%m-%dT%H:%M:%S%.3f%:z"));
+                } else {
+                    print!("{:29}", "");
+                }
+
+                if is_first {
+                    print!(" {:>9}", message.severity.to_string().to_uppercase());
+                } else {
+                    print!(" {:>9}", "");
+                }
+
+                if is_first {
+                    print!("> ");
+                } else {
+                    print!("… ");
+                }
+                self.style.reset(writer)?;
             }
 
-            if is_first {
-                print!(" {:>9}", message.severity.to_string().to_uppercase());
-            } else {
-                print!(" {:>9}", "");
-            }
-
-            if is_first {
-                print!("> ");
-            } else {
-                print!("… ");
-            }
-
-            self.style.reset(writer)?;
             self.style.severity(writer, message.severity)?;
             self.style.strong(writer)?;
             write!(writer, "{}", line)?;
@@ -71,7 +73,11 @@ impl OutputFormat for PrettyFormat {
             self.style.severity(writer, message.severity)?;
             self.style.weak(writer)?;
 
-            write!(writer, "{:39}+ {}", "", extra)?;
+            if !self.opts.compact {
+                write!(writer, "{:39}+ {}", "", extra)?;
+            } else {
+                write!(writer, "{}", extra)?;
+            }
 
             self.style.reset(writer)?;
 

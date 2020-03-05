@@ -34,6 +34,9 @@ struct Options {
 pub struct DisplayOptions {
     #[structopt(short = "x", long = "context")]
     show_context: bool,
+
+    #[structopt(short = "c", long = "compact")]
+    compact: bool,
 }
 
 #[derive(Debug, StructOpt)]
