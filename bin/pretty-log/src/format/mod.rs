@@ -5,6 +5,7 @@ mod text;
 
 use std::io::{self, Write};
 
+use crate::DisplayOptions;
 use self::style::Style;
 use crate::message::{Message, Severity};
 
@@ -25,14 +26,14 @@ macro_rules! format_select {
         ),*
         $(,)?
     ) => {
-        pub fn $select_fn(format: &str $(, $($arg:$arg_type),* )?) -> Option<Box<$type>> {
+        pub fn $select_fn(format: &str $(, $($arg:$arg_type),* )?) -> Result<Box<$type>, String> {
             let format: Box<$type> = match format {
                 $(
                     $($pattern)|* => Box::new($expr),
                 )*
-                _ => return None,
+                _ => return Err(format!("Unknown format: {}", format)),
             };
-            Some(format)
+            Ok(format)
         }
 
         #[allow(dead_code)]
@@ -48,7 +49,7 @@ macro_rules! format_select {
 }
 
 format_select! {
-    select_fn = get_input_format;
+    select_fn = get_input_format_impl;
     variants_fn = get_input_format_variants;
     default_fn = get_input_format_default;
     type = dyn InputFormat;
@@ -59,14 +60,28 @@ format_select! {
 }
 
 format_select! {
-    select_fn = get_output_format(style: impl Style);
+    select_fn = get_output_format(style: impl Style, display_opts: &DisplayOptions);
     variants_fn = get_output_format_variants;
     default_fn = get_output_format_default;
     type = dyn DynOutputFormat;
     default = "pretty";
 
     "text" => text::TextFormat::new(),
-    "pretty" => pretty::PrettyFormat::new(style),
+    "pretty" => pretty::PrettyFormat::new(style, display_opts),
+}
+
+pub fn get_input_format(formats: &[impl AsRef<str>]) -> Result<Box<dyn InputFormat>, String> {
+    if formats.is_empty() {
+        Ok(Box::new(text::TextFormat::new()))
+    } else if formats.len() == 1 {
+        get_input_format_impl(formats[0].as_ref())
+    } else {
+        let formats = formats
+            .iter()
+            .map(|format| get_input_format_impl(format.as_ref()))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Box::new(ListInputFormat(formats)))
+    }
 }
 
 pub trait InputFormat: Send + Sync {
@@ -82,6 +97,20 @@ impl<T: InputFormat + ?Sized> InputFormat for &'_ T {
 impl<T: InputFormat + ?Sized> InputFormat for Box<T> {
     fn parse_message(&self, message: &str, default_severity: Severity) -> Option<Message> {
         T::parse_message(self, message, default_severity)
+    }
+}
+
+pub struct ListInputFormat(Vec<Box<dyn InputFormat>>);
+
+impl InputFormat for ListInputFormat {
+    fn parse_message(&self, message: &str, default_severity: Severity) -> Option<Message> {
+        for format in &self.0 {
+            if let Some(message) = format.parse_message(message, default_severity) {
+                return Some(message);
+            }
+        }
+
+        None
     }
 }
 

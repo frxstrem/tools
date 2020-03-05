@@ -16,14 +16,23 @@ use crate::utils::is_stdout_tty;
 
 #[derive(Debug, StructOpt)]
 struct Options {
-    #[structopt(short = "i", long = "input", possible_values = format::get_input_format_variants(), default_value = format::get_input_format_default())]
-    input_format: String,
+    #[structopt(short = "i", long = "input", use_delimiter = true, possible_values = format::get_input_format_variants(), default_value = format::get_input_format_default())]
+    input_format: Vec<String>,
 
     #[structopt(short = "o", long = "output", possible_values = format::get_output_format_variants(), default_value = format::get_output_format_default())]
     output_format: String,
 
+    #[structopt(flatten)]
+    display_options: DisplayOptions,
+
     #[structopt(subcommand)]
     subcommand: Option<Subcommand>,
+}
+
+#[derive(Clone, Debug, StructOpt)]
+pub struct DisplayOptions {
+    #[structopt(short = "x", long = "context")]
+    show_context: bool,
 }
 
 #[derive(Debug, StructOpt)]
@@ -42,11 +51,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         PlainStyle.into()
     };
 
-    let input_format = format::get_input_format(&opts.input_format)
-        .ok_or_else(|| format!("Unknown input format: {:?}", &opts.input_format))?;
+    let input_format = format::get_input_format(&opts.input_format)?;
 
-    let output_format = format::get_output_format(&opts.output_format, style)
-        .ok_or_else(|| format!("Unknown output format: {:?}", &opts.output_format))?;
+    let output_format = format::get_output_format(&opts.output_format, style, &opts.display_options)?;
 
     match opts.subcommand.as_ref() {
         Some(Subcommand::External(args)) => {

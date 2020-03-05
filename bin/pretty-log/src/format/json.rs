@@ -1,4 +1,5 @@
 use chrono::{DateTime, Local, TimeZone};
+use std::collections::HashMap;
 use serde::{
     de::{self, Deserializer},
     Deserialize,
@@ -41,6 +42,9 @@ struct JsonMessage {
 
     #[serde(alias = "timestamp", default, deserialize_with = "parse_time")]
     pub time: Option<DateTime<Local>>,
+
+    #[serde(default)]
+    pub context: HashMap<String, String>,
 }
 
 impl JsonMessage {
@@ -49,6 +53,7 @@ impl JsonMessage {
             text: self.message,
             severity: self.severity.unwrap_or(default_severity),
             time: self.time,
+            context: self.context,
 
             ..Default::default()
         }
