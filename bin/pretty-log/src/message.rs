@@ -1,13 +1,16 @@
 use chrono::{DateTime, Local};
 use serde::{de::Deserializer, Deserialize};
+use std::collections::HashMap;
 use std::fmt::{self, Display};
 
 use crate::utils::StringOrNumber;
 
+#[derive(Clone, Default, Debug)]
 pub struct Message {
     pub text: String,
     pub severity: Severity,
     pub time: Option<DateTime<Local>>,
+    pub context: HashMap<String, String>,
 }
 
 impl Message {
@@ -16,6 +19,7 @@ impl Message {
             text: message.as_ref().to_string(),
             severity,
             time: None,
+            context: HashMap::new(),
         }
     }
 
@@ -25,8 +29,14 @@ impl Message {
         self.time = message.time.or(self.time);
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.text.is_empty()
+    pub fn add_context(&mut self, name: impl AsRef<str>, value: impl AsRef<str>) {
+        self.context
+            .insert(name.as_ref().to_string(), value.as_ref().to_string());
+    }
+
+    pub fn trim(mut self) -> Message {
+        self.text = self.text.trim_end_matches('\n').to_string();
+        self
     }
 }
 

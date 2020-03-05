@@ -1,10 +1,20 @@
 use serde::Deserialize;
+use std::str::FromStr;
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum StringOrNumber<N> {
     String(String),
     Number(N),
+}
+
+impl<N: FromStr> StringOrNumber<N> {
+    pub fn into_number(self) -> Result<N, N::Err> {
+        match self {
+            StringOrNumber::String(s) => s.parse(),
+            StringOrNumber::Number(n) => Ok(n),
+        }
+    }
 }
 
 pub fn is_stdout_tty() -> bool {

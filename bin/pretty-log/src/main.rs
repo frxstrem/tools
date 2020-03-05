@@ -9,7 +9,6 @@ use std::io::{self, BufRead, BufReader, Read, Write};
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::Mutex;
 use structopt::StructOpt;
-// use std::
 
 use crate::format::{style::*, InputFormat, OutputFormat};
 use crate::message::{Message, Severity};
@@ -85,11 +84,8 @@ fn run(
 
         let message = input
             .parse_message(line, default_severity)
-            .unwrap_or_else(|| Message::from_text(line, default_severity));
-
-        if message.is_empty() {
-            continue;
-        }
+            .unwrap_or_else(|| Message::from_text(line, default_severity))
+            .trim();
 
         let writer = &mut *writer.lock().unwrap();
         output.print_message(writer, &message)?;

@@ -1,8 +1,12 @@
 use chrono::{DateTime, Local, TimeZone};
-use serde::{de::Deserializer, Deserialize};
+use serde::{
+    de::{self, Deserializer},
+    Deserialize,
+};
 
 use super::{text::TextFormat, InputFormat};
 use crate::message::{Message, Severity};
+use crate::utils::StringOrNumber;
 
 pub struct JsonFormat<T: ?Sized = TextFormat> {
     inner_format: T,
@@ -45,6 +49,8 @@ impl JsonMessage {
             text: self.message,
             severity: self.severity.unwrap_or(default_severity),
             time: self.time,
+
+            ..Default::default()
         }
     }
 }
@@ -53,18 +59,23 @@ fn parse_time<'de, D>(deserializer: D) -> Result<Option<DateTime<Local>>, D::Err
 where
     D: Deserializer<'de>,
 {
-    #[derive(Deserialize)]
+    #[derive(Debug, Deserialize)]
     #[serde(untagged)]
     enum TimestampVariants {
         DateTime(DateTime<Local>),
-        SecondsNanos { seconds: i64, nanos: u32 },
+        SecondsNanos {
+            seconds: StringOrNumber<i64>,
+            nanos: StringOrNumber<u32>,
+        },
+        Any(serde_json::Value),
     }
 
     match <Option<TimestampVariants> as Deserialize>::deserialize(deserializer) {
         Ok(Some(TimestampVariants::DateTime(datetime))) => Ok(Some(datetime)),
-        Ok(Some(TimestampVariants::SecondsNanos { seconds, nanos })) => {
-            Ok(Some(Local.timestamp(seconds, nanos)))
-        }
+        Ok(Some(TimestampVariants::SecondsNanos { seconds, nanos })) => Ok(Some(Local.timestamp(
+            seconds.into_number().map_err(de::Error::custom)?,
+            nanos.into_number().map_err(de::Error::custom)?,
+        ))),
         _ => Ok(None),
     }
 }
