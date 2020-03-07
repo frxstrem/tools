@@ -2,7 +2,7 @@ use chrono::DateTime;
 
 use super::{text::TextFormat, InputFormat};
 use crate::message::{Message, Severity};
-use crate::parse::*;
+use crate::parse::{self, parse, Parse, ParseBuffer, ParseError, Punctuated, Token};
 
 pub struct GoFormat<T: ?Sized = TextFormat> {
     inner_format: T,
@@ -16,7 +16,7 @@ impl<T> GoFormat<T> {
 
 impl<T: InputFormat + ?Sized> InputFormat for GoFormat<T> {
     fn parse_message(&self, message: &str, default_severity: Severity) -> Option<Message> {
-        let fields = parse::<Punctuated<(RawLiteral, Equals, Value), Whitespace>>(message)?;
+        let fields: Punctuated<(RawLiteral, Equals, Value), Whitespace> = parse(message).ok()?;
 
         let mut message: Message = Message::from_text("", default_severity);
 
@@ -75,7 +75,7 @@ macro_rules! regex_token {
         }
 
         impl<'a> Token<'a> for $name<'a> {
-            fn parse_token(s: &'a str) -> Option<(Self, &'a str)> {
+            fn parse_token(s: &'a str) -> parse::Result<(Self, &'a str)> {
                 use lazy_static::lazy_static;
                 use regex::Regex;
 
@@ -91,6 +91,7 @@ macro_rules! regex_token {
                             None
                         }
                     })
+                    .ok_or_else(|| ParseError::custom(format!("Could not match token {}", stringify!($name))))
             }
         }
     }
@@ -110,18 +111,18 @@ impl AsRef<str> for StringLiteral {
 }
 
 impl<'a> Token<'a> for StringLiteral {
-    fn parse_token(s: &'a str) -> Option<(StringLiteral, &'a str)> {
+    fn parse_token(s: &'a str) -> parse::Result<(StringLiteral, &'a str)> {
         let mut iter = s.chars();
 
         match iter.next() {
             Some('"') => (),
-            _ => return None,
+            _ => return Err(ParseError::custom("Invalid string literal")),
         }
 
         let mut s = String::new();
         while let Some(ch) = iter.next() {
             match ch {
-                '"' => return Some((StringLiteral(s), iter.as_str())),
+                '"' => return Ok((StringLiteral(s), iter.as_str())),
                 '\\' => match iter.next() {
                     Some('"') => s.push('"'),
                     Some('\\') => s.push('\\'),
@@ -132,13 +133,13 @@ impl<'a> Token<'a> for StringLiteral {
                         s.push('\\');
                         s.push(ch);
                     }
-                    None => return None,
+                    None => return Err(ParseError::custom("Invalid string literal")),
                 },
                 _ => s.push(ch),
             }
         }
 
-        None
+        Err(ParseError::custom("Invalid string literal"))
     }
 }
 
@@ -158,13 +159,13 @@ impl<'a> AsRef<str> for Value<'a> {
 }
 
 impl<'a> Parse<'a> for Value<'a> {
-    fn parse(buf: &mut ParseBuffer<'a>) -> Option<Self> {
+    fn parse(buf: &mut ParseBuffer<'a>) -> parse::Result<Self> {
         if buf.is_next::<StringLiteral>() {
             StringLiteral::parse(buf).map(Value::String)
         } else if buf.is_next::<RawLiteral>() {
             RawLiteral::parse(buf).map(Value::Raw)
         } else {
-            None
+            Err(ParseError::custom("Invalid value"))
         }
     }
 }
