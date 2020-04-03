@@ -1,4 +1,5 @@
-use luxa_core::{error::*, luxa::*};
+use crate::error::*;
+use crate::luxa::*;
 
 macro_rules! modes {
     ($(
@@ -20,7 +21,7 @@ macro_rules! modes {
                 }
             }
 
-            pub async fn run<L: Luxafor>(&self, device: &L) -> Result<(), LuxaError> {
+            pub async fn run(&self, device: &LuxaforHid) -> Result<(), LuxaError> {
                 match self {
                     $( Mode::$color => device.fade(Color::$color, 50).await ),*
                 }

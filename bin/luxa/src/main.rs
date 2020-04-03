@@ -1,9 +1,12 @@
 mod modes;
+mod error;
+mod luxa;
 
 use clap::clap_app;
-use luxa_core::prelude::*;
-
 use std::process::exit;
+
+use crate::error::*;
+use crate::luxa::*;
 
 #[tokio::main]
 async fn main() {
@@ -26,7 +29,7 @@ async fn main() {
     }
 }
 
-async fn run<'a, L: Luxafor>(device: &L, args: &clap::ArgMatches<'a>) -> Result<(), LuxaError> {
+async fn run(device: &LuxaforHid, args: &clap::ArgMatches<'_>) -> Result<(), LuxaError> {
     let all_modes = modes::get_all_modes();
 
     if let Some(mode_name) = args.value_of("mode") {

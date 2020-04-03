@@ -1,7 +1,6 @@
 [workspace]
 members = [
   "lib/shared",
-  "lib/luxa-core",
   "bin/pretty-log",
   "bin/git-corun",
   "bin/luxa",
